@@ -639,7 +639,10 @@ impl SearchTree {
         });
     }
 
-    fn get_trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
+    /// This gets the trajectory in order from the leaf to the root
+    /// the direction here should be more apparant cause get_trajectory
+    /// does not encapsulate that in the name over heer
+    fn leaf_to_root(&self, node_index: usize) -> Vec<&ActionNode> {
         let node = self.get_node(node_index);
         if let None = node {
             vec![]
@@ -649,12 +652,18 @@ impl SearchTree {
             let parent_node = self.parent(node);
             match parent_node {
                 Some(parent_node) => {
-                    nodes.extend(self.get_trajectory(parent_node.index));
+                    nodes.extend(self.leaf_to_root(parent_node.index));
                     nodes
                 }
                 None => nodes,
             }
         }
+    }
+
+    fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
+        let mut leaf_to_root = self.leaf_to_root(node_index);
+        leaf_to_root.reverse();
+        leaf_to_root
     }
 
     pub fn run_node(&mut self, node_index: usize) {
@@ -670,7 +679,7 @@ impl SearchTree {
 
         // first we generate the message which we want to run inference for the
         // trajectory
-        let node_trajectory = self.get_trajectory(node_index);
+        let _node_trajectory = self.trajectory(node_index);
 
         // pick the next action we want to take over here
         // - execute the action

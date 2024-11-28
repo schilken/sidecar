@@ -241,6 +241,10 @@ impl Tool for SessionChatClient {
 
         // so now chat will be routed through codestory provider
         let llm_properties = context.llm_properties.clone();
+        println!(
+            "session_chat_client::llm_properties::({:?})",
+            &llm_properties
+        );
 
         let user_messages = self.user_message(context).await;
         let mut messages = vec![system_message];

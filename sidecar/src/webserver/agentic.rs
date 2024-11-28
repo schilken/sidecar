@@ -1014,6 +1014,7 @@ pub async fn agent_session_chat(
             LLMProvider::CodeStory(CodeStoryLLMTypes::new()),
             LLMProviderAPIKeys::CodeStory(CodestoryAccessToken::new(access_token.to_owned())),
         ));
+    println!("llm_provider::{:?}", &llm_provider);
     // bring this back later
     let agent_mode = AideAgentMode::Chat;
     println!("webserver::agent_session::chat::hit");
@@ -1430,6 +1431,7 @@ pub async fn agent_tool_use(
             LLMProvider::CodeStory(CodeStoryLLMTypes::new()),
             LLMProviderAPIKeys::CodeStory(CodestoryAccessToken::new(access_token.to_owned())),
         ));
+    println!("llm_provider::{:?}", &llm_provider);
     println!("webserver::agent_session::tool_use::hit");
     println!(
         "webserver::agent_session::tool_use::session_id({})",

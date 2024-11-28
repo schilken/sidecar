@@ -32,13 +32,7 @@ impl LLMType {
             LLMType::DeepSeekCoder1_3BInstruct => Ok("deepseek-coder:1.3b-instruct".to_owned()),
             LLMType::DeepSeekCoder6BInstruct => Ok("deepseek-coder:6.7b-instruct".to_owned()),
             LLMType::Llama3_1_8bInstruct => Ok("llama3.1".to_owned()),
-            LLMType::Custom(custom) => {
-                if custom == "codestory/export-to-codebase-openhermes-full" {
-                    Ok("codestory-finetune-export-to-codebase:latest".to_owned())
-                } else {
-                    Err(LLMClientError::UnSupportedModel)
-                }
-            }
+            LLMType::Custom(custom) => Ok(custom.to_owned()),
             _ => Err(LLMClientError::UnSupportedModel),
         }
     }

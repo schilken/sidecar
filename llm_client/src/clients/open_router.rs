@@ -76,6 +76,7 @@ impl OpenRouterClient {
             LLMType::Gpt4 => Some("openai/gpt-4".to_owned()),
             LLMType::Gpt4O => Some("openai/gpt-4o".to_owned()),
             LLMType::DeepSeekCoderV2 => Some("deepseek/deepseek-coder".to_owned()),
+            LLMType::Custom(name) => Some(name.to_owned()),
             _ => None,
         }
     }

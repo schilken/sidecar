@@ -379,11 +379,88 @@ file pattern here (optional)
         )
     }
 
-    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
-        vec![]
+    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+        let mut evaluation_criteria = if trajectory_length < 3 {
+            vec![
+                "Exploratory Actions: Recognize that initial searches and information-gathering steps are essential and should not be heavily penalized if they don't yield immediate results.",
+                "Appropriateness of Action: Evaluate if the action is logical given the agent's current knowledge and the early stage of problem-solving.",
+            ]
+        } else {
+            vec![
+                "Solution Quality: Assess the logical changes, contextual fit, and overall improvement without introducing new issues.",
+                "Progress Assessment: Evaluate the agent's awareness of solution history, detection of repetitive actions, and planned next steps.",
+                "Repetitive or Redundant Actions: Detect if the agent is repeating the same unsuccessful or redundant actions without making progress. Pay close attention to the agent's history and outputs indicating lack of progress.",
+            ]
+        };
+        evaluation_criteria.extend(vec![
+            "Query Relevance: Evaluate if the search query or parameters are well-defined and likely to find relevant code.",
+            "Search Scope Appropriateness: Check if the file patterns and class/function names narrow down the search effectively.",
+            "Relevance of Search Results: Assess whether the search results are directly related to the problem and useful for making progress.",
+            "Size of Search Results: Ensure that the code context provided is appropriately sized—not too large to overwhelm nor too small to be unhelpful.",
+        ]);
+        evaluation_criteria
+            .into_iter()
+            .map(|evaluation_criteria| evaluation_criteria.to_owned())
+            .collect()
     }
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
-        vec![]
+    fn get_reward_scale(&self, trajectory_length: usize) -> Vec<ToolRewardScale> {
+        if trajectory_length < 3 {
+            vec![
+                ToolRewardScale::new(
+                    90,
+                    100,
+                    "The search action is excellent, with well-defined parameters yielding only highly relevant results.",
+                ),
+                ToolRewardScale::new(
+                    75,
+                    89,
+                    "The search action is good, with reasonable parameters yielding relevant results.",
+                ),
+                ToolRewardScale::new(
+                    25,
+                    74,
+                    "The search action have issues with parameters or yields few or no relevant results.",
+                ),
+                ToolRewardScale::new(
+                    0,
+                    24,
+                    "The action is counterproductive, with search results that are entirely irrelevant or excessively large, causing setbacks.",
+                ),
+            ]
+        } else {
+            vec![
+                ToolRewardScale::new(
+                    90,
+                    100,
+                    "The search action significantly advances the solution, providing highly relevant and appropriately sized search results.",
+                ),
+                ToolRewardScale::new(
+                    75,
+                    89,
+                    "The search action contributes positively towards solving the problem, with relevant results and minor issues.",
+                ),
+                ToolRewardScale::new(
+                    50,
+                    74,
+                    "The search action is acceptable but may have issues with relevance or provides search results that are too large or too small.",
+                ),
+                ToolRewardScale::new(
+                    25,
+                    49,
+                    "The search action provides results that are not helpful due to relevance or size issues.",
+                ),
+                ToolRewardScale::new(
+                    0,
+                    24,
+                    "The search action has minimal impact, providing few relevant results.",
+                ),
+                ToolRewardScale::new(
+                    -50,
+                    -1,
+                    "The action is counterproductive, with search results that are entirely irrelevant or excessively large, causing setbacks.",
+                ),
+            ]
+        }
     }
 }

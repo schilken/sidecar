@@ -216,7 +216,7 @@ impl Tool for KeywordSearchQueryBroker {
         vec![]
     }
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+    fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
         vec![]
     }
 }

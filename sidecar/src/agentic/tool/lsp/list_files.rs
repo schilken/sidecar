@@ -264,10 +264,45 @@ true or false
     }
 
     fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
-        vec![]
+        vec![
+            "Directory Path Validity: Ensure the requested directory path exists and is valid.",
+            "Usefulness: Assess if listing the directory contents is helpful for the current task.",
+            "Efficiency: Evaluate if the action is being used at an appropriate time in the workflow.",
+        ].into_iter().map(|evaluation_criteria| evaluation_criteria.to_owned()).collect()
     }
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
-        vec![]
+    fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
+        vec![
+            ToolRewardScale::new(
+                5,
+                0,
+                "The action significantly advances the solution.",
+            ),
+            ToolRewardScale::new(
+                0,
+                4,
+                "The action contributes positively towards solving the problem.",
+            ),
+            ToolRewardScale::new(
+                5,
+                9,
+                "The action is acceptable but may have some issues.",
+            ),
+            ToolRewardScale::new(
+                0,
+                4,
+                "The action has minimal impact or minor negative consequences.",
+            ),
+            ToolRewardScale::new(
+                -49,
+                -1,
+                "The code change is inappropriate, unhelpful, introduces new issues, or redundantly repeats previous changes without making further progress. The Git diff does not align with instructions or is unnecessary.",
+            ),
+            ToolRewardScale::new(
+                -100,
+                -50,
+                "The code change is counterproductive, causing significant setbacks or demonstrating persistent repetition without learning. The agent fails to recognize completed tasks and continues to attempt redundant actions.",
+            ),
+        ]
     }
 }

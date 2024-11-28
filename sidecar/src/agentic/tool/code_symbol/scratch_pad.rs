@@ -26,7 +26,7 @@ use crate::{
             helpers::diff_recent_changes::DiffRecentChanges,
             input::ToolInput,
             output::ToolOutput,
-            r#type::Tool,
+            r#type::{Tool, ToolRewardScale},
         },
     },
     chunking::text_document::{Position, Range},
@@ -742,5 +742,13 @@ impl Tool for ScratchPadAgentBroker {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

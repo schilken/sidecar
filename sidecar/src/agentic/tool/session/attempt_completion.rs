@@ -2,7 +2,12 @@
 
 use async_trait::async_trait;
 
-use crate::agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool};
+use crate::agentic::tool::{
+    errors::ToolError,
+    input::ToolInput,
+    output::ToolOutput,
+    r#type::{Tool, ToolRewardScale},
+};
 
 pub struct AttemptCompletionClient {}
 
@@ -90,5 +95,58 @@ Your final result description here
 Command to demonstrate result (optional)
 </command>
 </attempt_completion>"#.to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![
+            "**Full Trajectory Review:** Evaluate the complete sequence of actions taken by the agent leading to this finish action. Assess whether the trajectory represents an efficient and logical path to the solution.",
+            "**Solution Correctness and Quality:** Verify that all changes made throughout the trajectory logically address the problem statement. Ensure the changes fit contextually within the existing codebase without introducing new issues. Confirm syntactic correctness and that there are no syntax errors or typos.",
+            "**Testing Requirements (Critical):**",
+            " * **Mandatory Test Updates:** The trajectory MUST include actions that either update existing tests or add new tests to verify the solution. A score of 75 or higher CANNOT be given without proper test coverage.",
+            " * **Test Coverage Quality:** Evaluate whether the tests added or modified throughout the trajectory adequately cover the changes, including edge cases and error conditions.",
+            " * **Test Execution Results:** Verify that all tests are passing after the complete sequence of changes.",
+            "**Assessment of Complete Trajectory:** Evaluate if the sequence of actions taken represents the most optimal path to the solution, or if unnecessary steps were taken.",
+            "**Verification of Task Completion:** Confirm that all aspects of the original issue have been addressed through the sequence of actions, including implementation, testing, and documentation where applicable.",
+        ].into_iter().map(|evaluation_criteria| evaluation_criteria.to_owned()).collect()
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![
+            ToolRewardScale::new(
+                90,
+                100,
+                "The complete trajectory perfectly resolves the issue with optimal code modifications AND includes comprehensive test updates/additions. All tests pass and cover all relevant scenarios. No further improvements needed.",
+            ),
+            ToolRewardScale::new(
+                75,
+                89,
+                "The trajectory successfully resolves the issue AND includes proper test updates/additions. All tests pass, though minor improvements to test coverage might be beneficial. REQUIRES test modifications to qualify for this range.",
+            ),
+            ToolRewardScale::new(
+                50,
+                74,
+                "The trajectory resolves the core issue but has gaps in test coverage OR the solution path wasn't optimal. May include cases where implementation is correct but tests were not adequately updated.",
+            ),
+            ToolRewardScale::new(
+                25,
+                49,
+                "The trajectory partially resolves the issue but lacks proper test coverage AND has other significant gaps such as incomplete implementation or inefficient solution path.",
+            ),
+            ToolRewardScale::new(
+                0,
+                24,
+                "The trajectory shows some progress but fails to properly resolve the issue AND lacks necessary test updates. The finish action was premature.",
+            ),
+            ToolRewardScale::new(
+                -49,
+                -1,
+                "The trajectory is inappropriate with major gaps in both implementation and testing. The finish action indicates a clear misunderstanding of the requirements.",
+            ),
+            ToolRewardScale::new(
+                -100,
+                -50,
+                "The trajectory is entirely incorrect, potentially introducing new issues, and completely lacks test coverage. The finish action is entirely premature.",
+            ),
+        ]
     }
 }

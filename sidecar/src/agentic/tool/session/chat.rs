@@ -13,7 +13,7 @@ use crate::{
             },
             input::ToolInput,
             output::ToolOutput,
-            r#type::Tool,
+            r#type::{Tool, ToolRewardScale},
         },
     },
     repo::types::RepoRef,
@@ -313,5 +313,13 @@ impl Tool for SessionChatClient {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

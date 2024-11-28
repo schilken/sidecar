@@ -13,7 +13,7 @@ use crate::{
         errors::ToolError,
         input::ToolInput,
         output::{CodeToEditToolOutput, ToolOutput},
-        r#type::Tool,
+        r#type::{Tool, ToolRewardScale},
     },
     chunking::languages::TSLanguageParsing,
     inline_completion::symbols_tracker::SymbolTrackerInline,
@@ -182,5 +182,13 @@ impl Tool for FindCodeSectionsToEdit {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

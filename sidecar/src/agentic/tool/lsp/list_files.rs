@@ -9,7 +9,12 @@ use std::{
 use async_trait::async_trait;
 use ignore::WalkBuilder;
 
-use crate::agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool};
+use crate::agentic::tool::{
+    errors::ToolError,
+    input::ToolInput,
+    output::ToolOutput,
+    r#type::{Tool, ToolRewardScale},
+};
 
 /// Handwaving this number into existence, no promises offered here and this is just
 /// a rough estimation of the context window
@@ -256,5 +261,13 @@ true or false
 </list_files>
 "#
         )
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

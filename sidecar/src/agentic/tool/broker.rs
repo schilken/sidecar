@@ -58,7 +58,7 @@ use super::{
         add_steps::PlanAddStepClient, generator::StepGeneratorClient, reasoning::ReasoningClient,
         updater::PlanUpdaterClient,
     },
-    r#type::{Tool, ToolType},
+    r#type::{Tool, ToolRewardScale, ToolType},
     ref_filter::ref_filter::ReferenceFilterBroker,
     repo_map::generator::RepoMapGeneratorClient,
     rerank::base::ReRankBroker,
@@ -506,5 +506,13 @@ impl Tool for ToolBroker {
 
     fn tool_input_format(&self) -> String {
         r#"Notice that you could technically give a tool input over here, but we recommend NOT to do that and instead use individual tools if you are working with that"#.to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

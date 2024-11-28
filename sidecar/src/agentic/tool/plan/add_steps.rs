@@ -16,8 +16,11 @@ use crate::{
     agentic::{
         symbol::identifier::LLMProperties,
         tool::{
-            errors::ToolError, helpers::diff_recent_changes::DiffRecentChanges, input::ToolInput,
-            output::ToolOutput, r#type::Tool,
+            errors::ToolError,
+            helpers::diff_recent_changes::DiffRecentChanges,
+            input::ToolInput,
+            output::ToolOutput,
+            r#type::{Tool, ToolRewardScale},
         },
     },
     user_context::types::UserContext,
@@ -322,5 +325,13 @@ impl Tool for PlanAddStepClient {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

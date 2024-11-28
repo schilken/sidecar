@@ -8,7 +8,12 @@ use std::sync::Arc;
 
 use crate::agentic::{
     symbol::identifier::LLMProperties,
-    tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool},
+    tool::{
+        errors::ToolError,
+        input::ToolInput,
+        output::ToolOutput,
+        r#type::{Tool, ToolRewardScale},
+    },
 };
 
 use super::{plan::Plan, plan_step::PlanStep};
@@ -195,5 +200,13 @@ impl Tool for PlanUpdaterClient {
 
     fn tool_input_format(&self) -> String {
         "missing_tool_input".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

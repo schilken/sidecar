@@ -1,5 +1,10 @@
 //! Allows us to go to type definition for a symbol
-use crate::agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool};
+use crate::agentic::tool::{
+    errors::ToolError,
+    input::ToolInput,
+    output::ToolOutput,
+    r#type::{Tool, ToolRewardScale},
+};
 use async_trait::async_trait;
 
 use super::gotodefintion::GoToDefinitionResponse;
@@ -44,5 +49,13 @@ impl Tool for LSPGoToTypeDefinition {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

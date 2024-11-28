@@ -229,10 +229,41 @@ File path here
     }
 
     fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
-        vec![]
+        vec![
+            "Relevance of Requested Context: Ensure that the requested context is directly related to the problem and necessary for making progress.",
+            "Avoiding Hallucinations: Verify that the agent is requesting context for code that actually exists in the codebase.",
+            "Efficiency: Assess whether the agent is requesting an appropriate amount of context without overloading unnecessary information.",
+            "Appropriateness of Action: Evaluate if requesting more context is logical at this point in the problem-solving process.",
+        ].into_iter().map(|evaluation_criteria| evaluation_criteria.to_owned()).collect()
     }
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
-        vec![]
+    fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
+        vec![
+            ToolRewardScale::new(
+                75,
+                100,
+                "The requested context is highly relevant, precise, and necessary for solving the problem; the agent avoids hallucinations.",
+            ),
+            ToolRewardScale::new(
+                50,
+                74,
+                "The requested context is relevant and helpful, with minor issues in specificity or relevance.",
+            ),
+            ToolRewardScale::new(
+                25,
+                49,
+                "The requested context is somewhat relevant but may include unnecessary information or lacks specificity.",
+            ),
+            ToolRewardScale::new(
+                0,
+                24,
+                "The requested context has minimal relevance or includes excessive unnecessary information.",
+            ),
+            ToolRewardScale::new(
+                -49,
+                -1,
+                "The requested context is irrelevant, demonstrates misunderstanding, or the agent is hallucinating code that doesn't exist.",
+            ),
+        ]
     }
 }

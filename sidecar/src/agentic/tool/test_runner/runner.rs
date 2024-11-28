@@ -95,7 +95,7 @@ path/to/file2.py
         ].into_iter().map(|evaluation_criteria| evaluation_criteria.to_owned()).collect()
     }
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+    fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
         vec![
             ToolRewardScale::new(
                 90,

@@ -303,5 +303,6 @@ pub trait Tool {
     /// Gets the evaluation criteria for the tool use
     fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String>;
 
-    fn get_reward_scale(&self) -> Vec<ToolRewardScale>;
+    /// Gets the reward scaling after the tool has been used
+    fn get_reward_scale(&self, trajectory_length: usize) -> Vec<ToolRewardScale>;
 }

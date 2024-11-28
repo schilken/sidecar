@@ -123,11 +123,57 @@ Your command here
         )
     }
 
-    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
-        vec![]
+    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+        let evaluation_criteria = if trajectory_length < 3 {
+            vec![
+                "Exploratory Actions: Recognize that initial searches and information-gathering steps are essential and should not be heavily penalized if they don't yield immediate results.",
+                "Appropriateness of Action: Evaluate if the action is logical given the agent's current knowledge and the early stage of problem-solving.",
+            ]
+        } else {
+            vec![
+                "Solution Quality: Assess the logical changes, contextual fit, and overall improvement without introducing new issues.",
+                "Progress Assessment: Evaluate the agent's awareness of solution history, detection of repetitive actions, and planned next steps.",
+                "Repetitive or Redundant Actions: Detect if the agent is repeating the same unsuccessful or redundant actions without making progress. Pay close attention to the agent's history and outputs indicating lack of progress.",
+            ]
+        };
+        evaluation_criteria
+            .into_iter()
+            .map(|evaluation_criteria| evaluation_criteria.to_owned())
+            .collect()
     }
 
     fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
-        vec![]
+        vec![
+            ToolRewardScale::new(
+                75,
+                100,
+                "The action significantly advances the solution.",
+            ),
+            ToolRewardScale::new(
+                50,
+                74,
+                "The action contributes positively towards solving the problem.",
+            ),
+            ToolRewardScale::new(
+                25,
+                49,
+                "The action is acceptable but may have some issues.",
+            ),
+            ToolRewardScale::new(
+                0,
+                24,
+                "The action has minimal impact or minor negative consequences.",
+            ),
+            ToolRewardScale::new(
+                -49,
+                -1,
+                "The code change is inappropriate, unhelpful, introduces new issues, or redundantly repeats previous changes without making further progress. The Git diff does not align with instructions or is unnecessary.",
+            ),
+            ToolRewardScale::new(
+                -100,
+                -50,
+                "The code change is counterproductive, causing significant setbacks or demonstrating persistent repetition without learning. The agent fails to recognize completed tasks and continues to attempt redundant actions.",
+            ),
+        ]
     }
 }

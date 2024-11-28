@@ -24,7 +24,7 @@ use crate::{
             input::ToolInput,
             lsp::{diagnostics::DiagnosticWithSnippet, open_file::OpenFileRequest},
             output::ToolOutput,
-            r#type::Tool,
+            r#type::{Tool, ToolRewardScale},
             session::chat::{SessionChatMessage, SessionChatRole},
         },
     },
@@ -916,6 +916,14 @@ impl Tool for SearchAndReplaceEditing {
     fn tool_input_format(&self) -> String {
         "".to_owned()
     }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
+    }
 }
 
 pub enum EditDelta {
@@ -1385,6 +1393,14 @@ mod tests {
 
         fn tool_input_format(&self) -> String {
             "".to_owned()
+        }
+
+        fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+            vec![]
+        }
+
+        fn get_reward_scale(&self) -> Vec<crate::agentic::tool::r#type::ToolRewardScale> {
+            vec![]
         }
     }
 

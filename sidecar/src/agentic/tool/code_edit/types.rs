@@ -15,7 +15,12 @@ use crate::{
             identifier::{LLMProperties, SymbolIdentifier},
             ui_event::UIEventWithID,
         },
-        tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool},
+        tool::{
+            errors::ToolError,
+            input::ToolInput,
+            output::ToolOutput,
+            r#type::{Tool, ToolRewardScale},
+        },
     },
     chunking::text_document::Range,
 };
@@ -494,6 +499,14 @@ Edit instruction here
 </instruction>
 </code_edit_input>"#
         )
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }
 

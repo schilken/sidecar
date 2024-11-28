@@ -1,4 +1,9 @@
-use crate::agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool};
+use crate::agentic::tool::{
+    errors::ToolError,
+    input::ToolInput,
+    output::ToolOutput,
+    r#type::{Tool, ToolRewardScale},
+};
 use async_trait::async_trait;
 
 pub struct TestRunner;
@@ -75,5 +80,58 @@ path/to/file2.py
 </fs_file_paths>
 </test_runner>"#
             .to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![
+            "Test Result Evaluation: Analyze test results in conjunction with the proposed code changes.",
+            "Test Failures Categorization: Differentiate between minor, foreseeable, and unforeseeable failures.",
+            " * Minor, Easily Fixable Failures: Lightly penalize or treat as neutral.",
+            " * Foreseeable Failures: Penalize appropriately based on the complexity of the fix.",
+            " * Unforeseeable Failures: Penalize very lightly or reward for providing new insights.",
+            "Impact of Failures: Consider the overall impact of test failures on the solution's viability.",
+            "Iterative Improvement: Encourage fixing minor issues in subsequent iterations.",
+            "Explanation Requirement: In your explanation, describe any test failures, their likely causes, and suggest potential next steps.",
+        ].into_iter().map(|evaluation_criteria| evaluation_criteria.to_owned()).collect()
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![
+            ToolRewardScale::new(
+                90,
+                100,
+                "All tests pass successfully, confirming the solution's correctness.",
+            ),
+            ToolRewardScale::new(
+                75,
+                89,
+                "Most tests pass, with minor, easily fixable failures.",
+            ),
+            ToolRewardScale::new(
+                50,
+                74,
+                "Tests have some failures, but they are minor or unforeseeable, and the agent shows understanding in interpreting results.",
+            ),
+            ToolRewardScale::new(
+                25,
+                49,
+                "Tests have noticeable failures; some may have been foreseeable, but the agent can address them with effort.",
+            ),
+            ToolRewardScale::new(
+                0,
+                24,
+                "Tests have significant failures; the agent's interpretation is minimal or incorrect.",
+            ),
+            ToolRewardScale::new(
+                -49,
+                -1,
+                "Tests fail significantly; the agent misinterprets results or shows lack of progress, foreseeable failures are not addressed.",
+            ),
+            ToolRewardScale::new(
+                -100,
+                -50,
+                "The action is counterproductive, demonstrating misunderstanding or causing setbacks, test failures are severe and could have been anticipated.",
+            ),
+        ]
     }
 }

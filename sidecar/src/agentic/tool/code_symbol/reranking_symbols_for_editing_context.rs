@@ -10,7 +10,12 @@ use serde_xml_rs::from_str;
 
 use crate::agentic::{
     symbol::identifier::LLMProperties,
-    tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool},
+    tool::{
+        errors::ToolError,
+        input::ToolInput,
+        output::ToolOutput,
+        r#type::{Tool, ToolRewardScale},
+    },
 };
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -493,6 +498,14 @@ impl Tool for ReRankingSnippetsForCodeEditingContext {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }
 

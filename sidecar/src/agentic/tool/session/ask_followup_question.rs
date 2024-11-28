@@ -2,7 +2,12 @@
 
 use async_trait::async_trait;
 
-use crate::agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool};
+use crate::agentic::tool::{
+    errors::ToolError,
+    input::ToolInput,
+    output::ToolOutput,
+    r#type::{Tool, ToolRewardScale},
+};
 
 pub struct AskFollowupQuestions {}
 
@@ -77,5 +82,13 @@ Usage:
 Your question here
 </question>
 </ask_followup_question>"#.to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

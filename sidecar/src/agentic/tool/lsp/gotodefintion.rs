@@ -1,5 +1,10 @@
 use crate::{
-    agentic::tool::{errors::ToolError, input::ToolInput, output::ToolOutput, r#type::Tool},
+    agentic::tool::{
+        errors::ToolError,
+        input::ToolInput,
+        output::ToolOutput,
+        r#type::{Tool, ToolRewardScale},
+    },
     chunking::text_document::{Position, Range},
 };
 use async_trait::async_trait;
@@ -94,6 +99,14 @@ impl Tool for LSPGoToDefinition {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }
 

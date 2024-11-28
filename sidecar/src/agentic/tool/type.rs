@@ -271,6 +271,25 @@ impl ToolType {
     }
 }
 
+/// Contains information about the reward scaling for the tool use with a minimum
+/// and a maximum range in which to give the reward out and the criteria for the reward
+/// which is the description if the tool output really does fit within this range
+pub struct ToolRewardScale {
+    minimum: i32,
+    maximum: i32,
+    description: String,
+}
+
+impl ToolRewardScale {
+    pub fn new(minimum: i32, maximum: i32, description: &str) -> Self {
+        Self {
+            minimum,
+            maximum,
+            description: description.to_owned(),
+        }
+    }
+}
+
 #[async_trait]
 pub trait Tool {
     async fn invoke(&self, input: ToolInput) -> Result<ToolOutput, ToolError>;
@@ -280,4 +299,9 @@ pub trait Tool {
 
     /// Provides an XML format for the input expected by the tool
     fn tool_input_format(&self) -> String;
+
+    /// Gets the evaluation criteria for the tool use
+    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String>;
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale>;
 }

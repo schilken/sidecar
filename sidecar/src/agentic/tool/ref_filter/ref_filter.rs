@@ -16,8 +16,11 @@ use crate::{
             ui_event::{GroupedReferences, RelevantReference, UIEventWithID},
         },
         tool::{
-            errors::ToolError, input::ToolInput, lsp::gotoreferences::AnchoredReference,
-            output::ToolOutput, r#type::Tool,
+            errors::ToolError,
+            input::ToolInput,
+            lsp::gotoreferences::AnchoredReference,
+            output::ToolOutput,
+            r#type::{Tool, ToolRewardScale},
         },
     },
     chunking::types::OutlineNode,
@@ -688,5 +691,13 @@ impl Tool for ReferenceFilterBroker {
 
     fn tool_input_format(&self) -> String {
         "".to_owned()
+    }
+
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
+        vec![]
+    }
+
+    fn get_reward_scale(&self) -> Vec<ToolRewardScale> {
+        vec![]
     }
 }

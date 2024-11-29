@@ -8,4 +8,7 @@ use crate::agentic::tool::errors::ToolError;
 pub enum InferenceError {
     #[error("Tool Error: {0}")]
     ToolError(#[from] ToolError),
+
+    #[error("Empty trajectory")]
+    EmptyTrajectory,
 }

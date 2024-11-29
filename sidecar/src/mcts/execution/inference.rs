@@ -17,10 +17,21 @@ struct InferenceEngine {}
 
 impl InferenceEngine {
     async fn execute(
-        _nodes: Vec<&ActionNode>,
-        _tool_box: Arc<ToolBox>,
-        _message_properties: SymbolEventMessageProperties,
+        mut nodes_trajectory: Vec<&ActionNode>,
+        tool_box: Arc<ToolBox>,
+        message_properties: SymbolEventMessageProperties,
     ) -> Result<ToolOutput, InferenceError> {
+        // split the trajectories between the root and the leaf right now
+        if nodes_trajectory.is_empty() {
+            return Err(InferenceError::EmptyTrajectory);
+        }
+
+        let root_to_leaf_direction = nodes_trajectory.split_off(nodes_trajectory.len() - 1);
+        let leaf = nodes_trajectory.pop();
+        if leaf.is_none() {
+            return Err(InferenceError::EmptyTrajectory);
+        }
+        let leaf = leaf.expect("is_none to hold");
         todo!()
     }
 }

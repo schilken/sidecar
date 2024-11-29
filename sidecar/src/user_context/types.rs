@@ -227,6 +227,17 @@ impl FileContentValue {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct UserContext {
     pub variables: Vec<VariableInformation>,
+    // TODO(skcd): The file content map over here contains the full context through out the
+    // lifecycle of ownership
+    // so we can freely update it when we want
+    // if we want to perform any operations comparing this to another user context
+    // we can do so over here
+    // - we want to track the changed file content values over here relative to
+    // another filecontent value
+    // use https://github.com/aorwall/moatless-tree-search/blob/59340c9aaa08af28919f563a9a5e0b229da7b3cb/moatless/file_context.py#L194-L204 to
+    // generate the changed span ids which are present
+    // TLDR: we want to get the patch and then get the line numbers which have changed
+    // everytime we apply any change on a file over here
     pub file_content_map: Vec<FileContentValue>,
     pub terminal_selection: Option<String>,
     // These paths will be absolute and need to be used to get the
@@ -496,6 +507,33 @@ impl UserContext {
             .collect::<Vec<_>>();
         new_user_context.variables.extend(variables_to_select);
         new_user_context
+    }
+
+    fn get_file_content(&self, file_path: &str) -> Option<&FileContentValue> {
+        self.file_content_map
+            .iter()
+            .find(|file_content| &file_content.file_path == file_path)
+    }
+
+    /// Grabs the complete path of the files which have changed between user context
+    pub fn get_updated_files(&self, old_context: &UserContext) -> HashSet<String> {
+        self.file_content_map
+            .iter()
+            .filter_map(|file_content| {
+                let older_file_content = old_context.get_file_content(&file_content.file_path);
+                match older_file_content {
+                    None => Some(file_content.file_path.to_owned()),
+                    Some(old_file_content_value) => {
+                        // Big string comparisons hurt the CPU
+                        if &old_file_content_value.file_content != &file_content.file_content {
+                            Some(file_content.file_path.to_owned())
+                        } else {
+                            None
+                        }
+                    }
+                }
+            })
+            .collect()
     }
 }
 

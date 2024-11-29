@@ -220,7 +220,11 @@ impl InferenceEngine {
                                 false,
                             )),
                             Err(e) => Ok(InferenceEngineResult::new(
-                                Some(ActionObservation::errored(e.to_string())),
+                                // when we have an execution error on the tool we are royally
+                                // messed up because we try our best to create an observation
+                                // even for the failure cases, generally this means an infra
+                                // failure so this is terminal
+                                Some(ActionObservation::errored(e.to_string(), false, true)),
                                 tool_parameters,
                                 false,
                             )),
@@ -228,13 +232,20 @@ impl InferenceEngine {
                     }
                 }
                 ToolUseAgentOutput::Failure(failed_string) => Ok(InferenceEngineResult::new(
-                    Some(ActionObservation::errored(failed_string.to_owned())),
+                    Some(ActionObservation::errored(
+                        failed_string.to_owned(),
+                        // we failed to parse the tool output, so we can expect an correction
+                        // over here
+                        true,
+                        false,
+                    )),
                     ActionToolParameters::errored(failed_string),
                     false,
                 )),
             },
             Err(e) => Ok(InferenceEngineResult::new(
-                Some(ActionObservation::errored(e.to_string())),
+                // This is an infra error so we can't expect a correction and this is terminal
+                Some(ActionObservation::errored(e.to_string(), false, true)),
                 ActionToolParameters::errored(e.to_string()),
                 false,
             )),
@@ -267,7 +278,7 @@ impl InferenceEngine {
                 let instruction = code_editing.instruction().to_owned();
 
                 // keep track of the file content which we are about to modify over here
-                let old_file_content = tool_box
+                let _old_file_content = tool_box
                     .file_open(fs_file_path.to_owned(), message_properties.clone())
                     .await;
 

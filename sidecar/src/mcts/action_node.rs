@@ -11,8 +11,9 @@ use crate::{
 };
 
 use super::{
-    execution::inference::InferenceEngine, selector::selector::Selector,
-    value_function::reward::Reward,
+    execution::inference::InferenceEngine,
+    selector::selector::Selector,
+    value_function::reward::{Reward, RewardGeneration},
 };
 
 #[derive(Clone)]
@@ -24,12 +25,12 @@ pub struct ActionObservation {
 }
 
 impl ActionObservation {
-    pub fn errored(message: String) -> Self {
+    pub fn errored(message: String, expect_correction: bool, terminal: bool) -> Self {
         Self {
             message,
             summary: None,
-            terminal: true,
-            expect_correction: false,
+            terminal,
+            expect_correction,
         }
     }
 
@@ -192,6 +193,8 @@ pub struct SearchTree {
     repo_name: String,
     // The tool box
     tool_box: Arc<ToolBox>,
+    // value function generation
+    reward_generation: RewardGeneration,
 }
 
 impl SearchTree {

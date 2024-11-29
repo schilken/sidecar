@@ -17,3 +17,5 @@ impl Reward {
         self.feedback.clone()
     }
 }
+
+pub struct RewardGeneration {}

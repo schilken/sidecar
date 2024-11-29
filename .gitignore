@@ -53,3 +53,7 @@ Temporary Items
 repomaps/**/*.txt
 
 traces/**/*.md
+
+# Aider stuff
+
+.aider.*

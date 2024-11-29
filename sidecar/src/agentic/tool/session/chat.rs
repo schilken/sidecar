@@ -23,7 +23,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use llm_client::{
     broker::LLMBroker,
-    clients::types::{LLMClientCompletionRequest, LLMClientMessage},
+    clients::types::{LLMClientCompletionRequest, LLMClientMessage, LLMClientRole},
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -64,6 +64,20 @@ impl SessionChatMessage {
 
     pub fn role(&self) -> &SessionChatRole {
         &self.role
+    }
+
+    pub fn from_llm_message(llm_message: LLMClientMessage) -> Self {
+        let role = llm_message.role();
+        let message = llm_message.content();
+        let role = match role {
+            &LLMClientRole::Assistant => SessionChatRole::Assistant,
+            &LLMClientRole::User => SessionChatRole::User,
+            _ => SessionChatRole::User,
+        };
+        Self {
+            message: message.to_owned(),
+            role,
+        }
     }
 }
 

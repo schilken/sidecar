@@ -1,4 +1,6 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+
+use llm_client::broker::LLMBroker;
 
 use crate::{
     agentic::tool::{input::ToolInputPartial, r#type::ToolType},
@@ -16,6 +18,26 @@ pub struct ActionObservation {
 }
 
 impl ActionObservation {
+    pub fn errored(message: String) -> Self {
+        Self {
+            message,
+            summary: None,
+            terminal: true,
+            expect_correction: false,
+        }
+    }
+
+    pub fn new(message: String, summary: String, terminal: bool) -> Self {
+        Self {
+            message,
+            summary: Some(summary),
+            terminal,
+            expect_correction: false,
+        }
+    }
+}
+
+impl ActionObservation {
     pub fn summary(&self) -> Option<String> {
         self.summary.clone()
     }
@@ -25,11 +47,43 @@ impl ActionObservation {
     }
 }
 
+#[derive(Clone)]
+pub enum ActionToolParameters {
+    Errored(String),
+    Tool(ToolInputPartial),
+}
+
+impl ActionToolParameters {
+    pub fn errored(error_str: String) -> Self {
+        Self::Errored(error_str)
+    }
+
+    pub fn tool(tool_input: ToolInputPartial) -> Self {
+        Self::Tool(tool_input)
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Errored(error_string) => {
+                format!("Failed to generate action. Error: {error_string}")
+            }
+            Self::Tool(tool_input_partial) => tool_input_partial.to_string(),
+        }
+    }
+
+    pub fn to_tool_type(&self) -> Option<ToolType> {
+        match self {
+            Self::Errored(_) => None,
+            Self::Tool(tool_input_partial) => Some(tool_input_partial.to_tool_type()),
+        }
+    }
+}
+
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
 pub struct ActionNode {
     index: usize,
-    action: Option<ToolInputPartial>,
+    action: Option<ActionToolParameters>,
     feedback: Option<String>,
     is_duplicate: bool,
     reward: Option<Reward>,
@@ -64,7 +118,7 @@ impl ActionNode {
         self.observation.clone()
     }
 
-    pub fn action(&self) -> Option<ToolInputPartial> {
+    pub fn action(&self) -> Option<ActionToolParameters> {
         self.action.clone()
     }
 
@@ -124,6 +178,12 @@ pub struct SearchTree {
     max_depth: u32,
     selector: Selector,
     tools: Vec<ToolType>,
+    // the working directory
+    root_directory: String,
+    // the LLM Client
+    llm_client: Arc<LLMBroker>,
+    // repo-ref
+    repo_name: String,
 }
 
 impl SearchTree {
@@ -133,6 +193,22 @@ impl SearchTree {
         } else {
             None
         }
+    }
+
+    pub fn repo_name(&self) -> String {
+        self.repo_name.to_owned()
+    }
+
+    pub fn root_directory(&self) -> String {
+        self.root_directory.to_owned()
+    }
+
+    pub fn llm_client(&self) -> Arc<LLMBroker> {
+        self.llm_client.clone()
+    }
+
+    pub fn tools(&self) -> Vec<ToolType> {
+        self.tools.to_vec()
     }
 
     fn add_node(&mut self, node_index: usize, node: ActionNode) {
@@ -330,7 +406,7 @@ impl SearchTree {
                     .to_vec()
                     .into_iter()
                     .filter_map(|child| child.action.clone())
-                    .map(|tool_parameters| tool_parameters.to_tool_type())
+                    .filter_map(|tool_parameters| tool_parameters.to_tool_type())
                     .any(|tool_type| {
                         bad_child_actions
                             .to_vec()
@@ -682,6 +758,43 @@ impl SearchTree {
                 None => nodes,
             }
         }
+    }
+
+    pub fn is_duplicate(
+        &self,
+        current_node: &ActionNode,
+        action_to_take: &ActionToolParameters,
+    ) -> bool {
+        let mut trajectory = self.trajectory(current_node.index);
+        let root_to_leaf_direction = trajectory.split_off(trajectory.len() - 1);
+        let is_duplicate = root_to_leaf_direction.into_iter().any(|node| {
+            if let Some(action) = node.action() {
+                match (action, action_to_take) {
+                    (
+                        ActionToolParameters::Errored(first_error),
+                        &ActionToolParameters::Errored(ref second_error),
+                    ) => &first_error == second_error,
+                    (
+                        ActionToolParameters::Tool(first_tool_input_parameters),
+                        &ActionToolParameters::Tool(ref second_tool_input_parameters),
+                    ) => {
+                        let first_tool_type = first_tool_input_parameters.to_tool_type();
+                        let second_tool_type = second_tool_input_parameters.to_tool_type();
+                        if first_tool_type != second_tool_type {
+                            false
+                        } else {
+                            // now we can compare the tool input parameters
+                            // since they do not have the thinking over here
+                            first_tool_type.to_string() == second_tool_type.to_string()
+                        }
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        });
+        is_duplicate
     }
 
     fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {

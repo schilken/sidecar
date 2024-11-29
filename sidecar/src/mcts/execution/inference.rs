@@ -1,19 +1,56 @@
 //! Executes the nodes for coding its main purpose is the following:
 //! fn execute(nodes: Vec<&ActionNode>) -> Result<ToolOutput, ExecutionError>;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use llm_client::clients::types::LLMClientMessage;
 
 use crate::{
     agentic::{
-        symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
-        tool::output::ToolOutput,
+        symbol::{
+            events::{edit::SymbolToEdit, message_event::SymbolEventMessageProperties},
+            identifier::SymbolIdentifier,
+            tool_box::ToolBox,
+        },
+        tool::{
+            input::{ToolInput, ToolInputPartial},
+            lsp::{open_file::OpenFileRequest, search_file::SearchFileContentInput},
+            output::ToolOutput,
+            r#type::Tool,
+            repo_map::generator::RepoMapGeneratorRequest,
+            session::{
+                chat::SessionChatMessage,
+                tool_use_agent::{ToolUseAgent, ToolUseAgentInput, ToolUseAgentOutput},
+            },
+            terminal::terminal::TerminalInput,
+            test_runner::runner::TestRunnerRequest,
+        },
     },
-    mcts::action_node::{ActionNode, SearchTree},
+    chunking::text_document::{Position, Range},
+    mcts::action_node::{ActionNode, ActionObservation, ActionToolParameters, SearchTree},
 };
 
 use super::error::InferenceError;
+
+pub struct InferenceEngineResult {
+    action_observation: Option<ActionObservation>,
+    action_tool_parameters: ActionToolParameters,
+    is_duplicate: bool,
+}
+
+impl InferenceEngineResult {
+    pub fn new(
+        action_observation: Option<ActionObservation>,
+        action_tool_parameters: ActionToolParameters,
+        is_duplicate: bool,
+    ) -> Self {
+        Self {
+            action_observation,
+            action_tool_parameters,
+            is_duplicate,
+        }
+    }
+}
 
 struct InferenceEngine {}
 
@@ -92,5 +129,479 @@ impl InferenceEngine {
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
 
         todo!()
+    }
+
+    async fn generate_observation_for_node(
+        &self,
+        current_node: &ActionNode,
+        search_tree: &SearchTree,
+        messages: Vec<LLMClientMessage>,
+        tool_box: Arc<ToolBox>,
+        message_properties: SymbolEventMessageProperties,
+    ) -> Result<InferenceEngineResult, InferenceError> {
+        let tool_use_agent = ToolUseAgent::new(
+            search_tree.llm_client(),
+            search_tree.root_directory(),
+            "linux".to_owned(),
+            "bash".to_owned(),
+            Some(search_tree.repo_name()),
+            false,
+        );
+
+        let tool_agent_input = ToolUseAgentInput::new(
+            messages
+                .into_iter()
+                .map(|message| SessionChatMessage::from_llm_message(message))
+                .collect(),
+            search_tree
+                .tools()
+                .into_iter()
+                .filter_map(|tool_type| tool_box.tools().get_tool_description(&tool_type))
+                .collect(),
+            None,
+            message_properties.clone(),
+        );
+
+        // now create the input for the tool use agent
+        let tool_use_output = tool_use_agent.invoke(tool_agent_input).await;
+
+        // Now we get the tool use output
+        match tool_use_output {
+            Ok(tool_use_parameters) => match tool_use_parameters {
+                // we are going to execute this branch of the code so we can get the output
+                // over here
+                ToolUseAgentOutput::Success((tool_input_partial, _)) => {
+                    let tool_parameters = ActionToolParameters::tool(tool_input_partial.clone());
+                    // we should also detect duplicates over here before we start executing
+                    // before executing the tool, check if the tool parameters are equal
+                    // we can start with doing something very simple before we do a hard thing
+                    let is_duplicate = search_tree.is_duplicate(current_node, &tool_parameters);
+                    if is_duplicate {
+                        Ok(InferenceEngineResult::new(None, tool_parameters, true))
+                    } else {
+                        // TODO(skcd): Execute the tool and generate the observation we need
+                        // for the node
+                        let node_execution_output = self
+                            .execute_tool_and_generate_observation(
+                                tool_input_partial,
+                                tool_box.clone(),
+                                message_properties.clone(),
+                            )
+                            .await;
+                        match node_execution_output {
+                            Ok(observation) => Ok(InferenceEngineResult::new(
+                                Some(observation),
+                                tool_parameters,
+                                false,
+                            )),
+                            Err(e) => Ok(InferenceEngineResult::new(
+                                Some(ActionObservation::errored(e.to_string())),
+                                tool_parameters,
+                                false,
+                            )),
+                        }
+                    }
+                }
+                ToolUseAgentOutput::Failure(failed_string) => Ok(InferenceEngineResult::new(
+                    Some(ActionObservation::errored(failed_string.to_owned())),
+                    ActionToolParameters::errored(failed_string),
+                    false,
+                )),
+            },
+            Err(e) => Ok(InferenceEngineResult::new(
+                Some(ActionObservation::errored(e.to_string())),
+                ActionToolParameters::errored(e.to_string()),
+                false,
+            )),
+        }
+    }
+
+    async fn execute_tool_and_generate_observation(
+        &self,
+        tool_input_partial: ToolInputPartial,
+        tool_box: Arc<ToolBox>,
+        message_properties: SymbolEventMessageProperties,
+    ) -> Result<ActionObservation, InferenceError> {
+        match tool_input_partial {
+            ToolInputPartial::AskFollowupQuestions(_) => {
+                // we never hit this branch for ask followup
+                Err(InferenceError::WrongToolOutput)
+            }
+            ToolInputPartial::AttemptCompletion(attemp_completion) => {
+                let message = attemp_completion.to_string();
+                Ok(ActionObservation::new(message.to_owned(), message, true))
+            }
+            ToolInputPartial::CodeEditing(code_editing) => {
+                let fs_file_path = code_editing.fs_file_path().to_owned();
+                let file_contents = tool_box
+                    .file_open(fs_file_path.to_owned(), message_properties.clone())
+                    .await
+                    .map_err(|e| InferenceError::SymbolError(e))?
+                    .contents();
+
+                let instruction = code_editing.instruction().to_owned();
+
+                // keep track of the file content which we are about to modify over here
+                let old_file_content = tool_box
+                    .file_open(fs_file_path.to_owned(), message_properties.clone())
+                    .await;
+
+                // if the file is very very large then we chunk it up and use search and replace
+                // on individual chunks instead
+                let updated_code = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
+                    >= 1300
+                {
+                    let first_part_lines = file_contents
+                        .to_owned()
+                        .lines()
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(idx, line)| {
+                            if idx <= 750 {
+                                Some(line.to_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let second_part_lines = file_contents
+                        .to_owned()
+                        .lines()
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(idx, line)| {
+                            if idx > 750 {
+                                Some(line.to_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    let range_to_edit =
+                        Range::new(Position::new(0, 0, 0), Position::new(10_000, 0, 0));
+
+                    // First half of the file has been edited
+                    let symbol_to_edit = SymbolToEdit::new(
+                        fs_file_path.to_owned(),
+                        range_to_edit,
+                        fs_file_path.to_owned(),
+                        vec![instruction.clone()],
+                        false,
+                        false, // is_new
+                        false,
+                        "".to_owned(),
+                        None,
+                        false,
+                        None,
+                        false,
+                        None,
+                        vec![], // previous_user_queries
+                        None,
+                    )
+                    .set_should_stream_status(false);
+
+                    let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
+
+                    let first_part_edited = tool_box
+                        .code_editing_with_search_and_replace(
+                            &symbol_to_edit,
+                            &fs_file_path,
+                            &first_part_lines,
+                            &range_to_edit,
+                            "".to_owned(),
+                            instruction.clone(),
+                            &symbol_identifier,
+                            None,
+                            None,
+                            message_properties.clone(),
+                        )
+                        .await
+                        .map_err(|e| InferenceError::SymbolError(e))?; // big expectations but can also fail, we should handle it properly
+
+                    // Editing second half of the file
+                    let symbol_to_edit = SymbolToEdit::new(
+                        fs_file_path.to_owned(),
+                        range_to_edit,
+                        fs_file_path.to_owned(),
+                        vec![instruction.clone()],
+                        false,
+                        false, // is_new
+                        false,
+                        "".to_owned(),
+                        None,
+                        false,
+                        None,
+                        false,
+                        None,
+                        vec![], // previous_user_queries
+                        None,
+                    )
+                    .set_should_stream_status(false);
+
+                    let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
+
+                    let second_part_edited = tool_box
+                        .code_editing_with_search_and_replace(
+                            &symbol_to_edit,
+                            &fs_file_path,
+                            &second_part_lines,
+                            &range_to_edit,
+                            "".to_owned(),
+                            format!(r#"{}
+This is part of the file which might not contain the method in full, if thats the case do not generate any edits"#, instruction.clone()),
+                            &symbol_identifier,
+                            None,
+                            None,
+                            message_properties.clone(),
+                        )
+                        .await
+                        .map_err(|e| InferenceError::SymbolError(e))?; // big expectations but can also fail, we should handle it properly
+                    format!(
+                        r#"{}
+{}"#,
+                        first_part_edited, second_part_edited
+                    )
+                } else {
+                    let default_range =
+                    // very large end position
+                    Range::new(Position::new(0, 0, 0), Position::new(10_000, 0, 0));
+
+                    let symbol_to_edit = SymbolToEdit::new(
+                        fs_file_path.to_owned(),
+                        default_range,
+                        fs_file_path.to_owned(),
+                        vec![instruction.clone()],
+                        false,
+                        false, // is_new
+                        false,
+                        "".to_owned(),
+                        None,
+                        false,
+                        None,
+                        false,
+                        None,
+                        vec![], // previous_user_queries
+                        None,
+                    )
+                    .set_should_stream_status(false);
+
+                    let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
+
+                    tool_box
+                        .code_editing_with_search_and_replace(
+                            &symbol_to_edit,
+                            &fs_file_path,
+                            &file_contents,
+                            &default_range,
+                            "".to_owned(),
+                            instruction.clone(),
+                            &symbol_identifier,
+                            None,
+                            None,
+                            message_properties.clone(),
+                        )
+                        .await
+                        .map_err(|e| InferenceError::SymbolError(e))? // big expectations but can also fail, we should handle it properly
+                };
+                // This code-block only ever hits for the swe-bench run and nothing else
+                // in the future we should create a tool for this, but this will help unblock us
+                {
+                    // we want to update the whole file content with the new content over here
+                    // first we check if the file really exists on the fs, if it does not we create it
+                    if let Ok(false) = tokio::fs::try_exists(fs_file_path.to_owned()).await {
+                        tokio::fs::create_dir_all(
+                            Path::new(&fs_file_path).parent().expect("to exist"),
+                        )
+                        .await
+                        .expect("creating parent directory to work");
+                        tokio::fs::File::create(fs_file_path.to_owned())
+                            .await
+                            .expect("file creation to not fail");
+                    }
+                    let _ =
+                        tokio::fs::write(fs_file_path.to_owned(), updated_code.to_owned()).await;
+
+                    // we have the original file content and the updated code content
+                    // we want to generate a git-diff between the 2 and pass that to the LLM implicitly
+                    // since we do not have a recent-edits handle easily implemented in python mock editor
+                    // This is really bad but we are interested in testing out things for now (DO NOT COMMIT)
+                    let client = reqwest::Client::new();
+                    let original_content = &file_contents;
+                    let request_object = serde_json::json!({
+                        "original_content": original_content,
+                        "modified_content": updated_code,
+                        "fs_file_path": fs_file_path,
+                    });
+                    let response = client
+                        .post(message_properties.editor_url() + "/diff_generator")
+                        .body(serde_json::to_string(&request_object).expect("to work"))
+                        .send()
+                        .await
+                        .expect("to get a reply");
+                    #[derive(serde::Deserialize)]
+                    struct FileEditedResponseStruct {
+                        generated_diff: String,
+                    }
+                    let response: FileEditedResponseStruct =
+                        response.json().await.expect("to work");
+                    let generated_diff = response.generated_diff;
+                    let message = format!(
+                        r#"I performed the edits which you asked me to, and here is the patch with the changes
+{generated_diff}"#
+                    );
+                    Ok(ActionObservation::new(message.to_owned(), message, false))
+                }
+            }
+            ToolInputPartial::LSPDiagnostics(_) => {
+                todo!("LSP diagnostics are not supported right now")
+            }
+            ToolInputPartial::ListFiles(list_files) => {
+                let directory_path = list_files.directory_path().to_owned();
+                let input = ToolInput::ListFiles(list_files);
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?;
+                let list_files_output = response
+                    .get_list_files_directory()
+                    .ok_or(InferenceError::WrongToolOutput)?;
+                let response = list_files_output
+                    .files()
+                    .into_iter()
+                    .map(|file_path| file_path.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let message = format!(
+                    r#"Content for directory {directory_path}
+{}"#,
+                    response.to_owned()
+                );
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message.to_owned(),
+                    false,
+                ))
+            }
+            ToolInputPartial::OpenFile(open_file) => {
+                let open_file_path = open_file.fs_file_path().to_owned();
+                let request = OpenFileRequest::new(
+                    open_file_path.to_owned(),
+                    message_properties.editor_url(),
+                );
+                let input = ToolInput::OpenFile(request);
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?
+                    .get_file_open_response()
+                    .ok_or(InferenceError::WrongToolOutput)?
+                    .to_string();
+                Ok(ActionObservation::new(
+                    format!(
+                        r#"Here's the content of the file which you wanted to see
+{}"#,
+                        &response
+                    ),
+                    format!(
+                        "Showed the content of the following file {}",
+                        &open_file_path
+                    ),
+                    false,
+                ))
+            }
+            ToolInputPartial::RepoMapGeneration(repo_map_request) => {
+                let directory_path = repo_map_request.directory_path().to_owned();
+                let request = ToolInput::RepoMapGeneration(RepoMapGeneratorRequest::new(
+                    repo_map_request.directory_path().to_owned(),
+                    3000,
+                ));
+                let tool_output = tool_box
+                    .tools()
+                    .invoke(request)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?
+                    .repo_map_generator_response()
+                    .ok_or(InferenceError::WrongToolOutput)?;
+                let repo_map_str = tool_output.repo_map().to_owned();
+                let message = format!(
+                    r#"Here's the outline of classes and functions present in the directory {directory_path}
+{repo_map_str}"#
+                );
+                Ok(ActionObservation::new(message.to_owned(), message, false))
+            }
+            ToolInputPartial::SearchFileContentWithRegex(search_file) => {
+                let request = SearchFileContentInput::new(
+                    search_file.directory_path().to_owned(),
+                    search_file.regex_pattern().to_owned(),
+                    search_file.file_pattern().map(|s| s.to_owned()),
+                    message_properties.editor_url(),
+                );
+                let input = ToolInput::SearchFileContentWithRegex(request);
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?
+                    .get_search_file_content_with_regex()
+                    .ok_or(InferenceError::WrongToolOutput)?;
+                let response = response.response();
+                let message = format!(
+                    r#"Here's the result of running the search query
+{}"#,
+                    response
+                );
+                Ok(ActionObservation::new(message.to_owned(), message, false))
+            }
+            ToolInputPartial::TerminalCommand(terminal_command) => {
+                let command = terminal_command.command().to_owned();
+                let request =
+                    TerminalInput::new(command.to_owned(), message_properties.editor_url());
+                let input = ToolInput::TerminalCommand(request);
+                let tool_output = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?
+                    .terminal_command()
+                    .ok_or(InferenceError::WrongToolOutput)?;
+                let output = tool_output.output().to_owned();
+                let message = format!(
+                    r#"Here's the output from running the terminal command
+Command: {}
+Terminal output: {}"#,
+                    command, output
+                );
+                Ok(ActionObservation::new(message.to_owned(), message, false))
+            }
+            ToolInputPartial::TestRunner(fs_file_paths) => {
+                let editor_url = message_properties.editor_url().to_owned();
+                let input =
+                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.clone(), editor_url));
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| InferenceError::ToolError(e))?
+                    .get_test_runner()
+                    .ok_or(InferenceError::WrongToolOutput)?;
+                let message = format!(
+                    r#"Here's the result of running the tests on the following files:
+{}
+                
+Test Output from the script (we also have to setup the test runner):
+Exit code: {}
+Output:
+{}"#,
+                    fs_file_paths.join("\n"),
+                    response.exit_code(),
+                    response.test_output()
+                );
+                Ok(ActionObservation::new(message.to_owned(), message, false))
+            }
+        }
     }
 }

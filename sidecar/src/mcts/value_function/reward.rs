@@ -12,4 +12,8 @@ impl Reward {
     pub fn value(&self) -> i32 {
         self.value
     }
+
+    pub fn feedback(&self) -> Option<String> {
+        self.feedback.clone()
+    }
 }

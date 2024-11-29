@@ -1,7 +1,5 @@
 use std::collections::HashMap;
 
-use llm_client::clients::types::LLMClientMessage;
-
 use crate::{
     agentic::tool::{input::ToolInputPartial, r#type::ToolType},
     user_context::types::UserContext,
@@ -9,11 +7,22 @@ use crate::{
 
 use super::{selector::selector::Selector, value_function::reward::Reward};
 
+#[derive(Clone)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
+}
+
+impl ActionObservation {
+    pub fn summary(&self) -> Option<String> {
+        self.summary.clone()
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
 }
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
@@ -51,6 +60,18 @@ impl ActionNode {
         }
     }
 
+    pub fn observation(&self) -> Option<ActionObservation> {
+        self.observation.clone()
+    }
+
+    pub fn action(&self) -> Option<ToolInputPartial> {
+        self.action.clone()
+    }
+
+    pub fn message(&self) -> Option<String> {
+        self.message.clone()
+    }
+
     pub fn reward(&self) -> Option<&Reward> {
         self.reward.as_ref()
     }
@@ -82,9 +103,12 @@ impl ActionNode {
         self.action = None;
     }
 
-    /// Get the message figured out properly over here
-    fn to_messages(nodes: Vec<&Self>) -> Vec<LLMClientMessage> {
-        vec![]
+    pub fn user_context(&self) -> &UserContext {
+        &self.user_context
+    }
+
+    pub fn feedback(&self) -> Option<String> {
+        self.feedback.clone()
     }
 }
 
@@ -103,7 +127,7 @@ pub struct SearchTree {
 }
 
 impl SearchTree {
-    fn parent(&self, node: &ActionNode) -> Option<&ActionNode> {
+    pub fn parent(&self, node: &ActionNode) -> Option<&ActionNode> {
         if let Some(parent_index) = self.node_to_parent.get(&node.index) {
             self.index_to_node.get(parent_index)
         } else {

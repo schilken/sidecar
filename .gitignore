@@ -55,5 +55,5 @@ repomaps/**/*.txt
 traces/**/*.md
 
 # Aider stuff
-
-.aider.*
+.aider*
+.env

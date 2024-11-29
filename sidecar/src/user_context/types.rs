@@ -227,6 +227,8 @@ impl FileContentValue {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct UserContext {
     pub variables: Vec<VariableInformation>,
+    #[serde(default)]
+    original_variables: Vec<VariableInformation>,
     // TODO(skcd): The file content map over here contains the full context through out the
     // lifecycle of ownership
     // so we can freely update it when we want
@@ -260,8 +262,9 @@ impl UserContext {
         folder_paths: Vec<String>,
     ) -> Self {
         Self {
-            variables,
+            variables: variables.to_vec(),
             file_content_map,
+            original_variables: variables,
             terminal_selection,
             folder_paths,
             is_plan_generation: false,
@@ -509,24 +512,25 @@ impl UserContext {
         new_user_context
     }
 
-    fn get_file_content(&self, file_path: &str) -> Option<&FileContentValue> {
-        self.file_content_map
-            .iter()
-            .find(|file_content| &file_content.file_path == file_path)
+    fn get_file_content(&self, file_path: &str) -> Option<&VariableInformation> {
+        self.variables.iter().find(|variable_information| {
+            &variable_information.fs_file_path == file_path && variable_information.is_file()
+        })
     }
 
     /// Grabs the complete path of the files which have changed between user context
     pub fn get_updated_files(&self, old_context: &UserContext) -> HashSet<String> {
-        self.file_content_map
+        self.variables
             .iter()
-            .filter_map(|file_content| {
-                let older_file_content = old_context.get_file_content(&file_content.file_path);
+            .filter_map(|variable_information| {
+                let older_file_content =
+                    old_context.get_file_content(&variable_information.fs_file_path);
                 match older_file_content {
-                    None => Some(file_content.file_path.to_owned()),
+                    None => Some(variable_information.fs_file_path.to_owned()),
                     Some(old_file_content_value) => {
                         // Big string comparisons hurt the CPU
-                        if &old_file_content_value.file_content != &file_content.file_content {
-                            Some(file_content.file_path.to_owned())
+                        if &variable_information.content != &old_file_content_value.content {
+                            Some(variable_information.fs_file_path.to_owned())
                         } else {
                             None
                         }
@@ -534,6 +538,10 @@ impl UserContext {
                 }
             })
             .collect()
+    }
+
+    pub fn updated_file_delta(&self, fs_file_path: &str) -> Option<String> {
+        None
     }
 }
 

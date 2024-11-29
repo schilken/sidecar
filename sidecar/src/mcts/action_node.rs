@@ -3,11 +3,17 @@ use std::{collections::HashMap, sync::Arc};
 use llm_client::broker::LLMBroker;
 
 use crate::{
-    agentic::tool::{input::ToolInputPartial, r#type::ToolType},
+    agentic::{
+        symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
+        tool::{input::ToolInputPartial, r#type::ToolType},
+    },
     user_context::types::UserContext,
 };
 
-use super::{selector::selector::Selector, value_function::reward::Reward};
+use super::{
+    execution::inference::InferenceEngine, selector::selector::Selector,
+    value_function::reward::Reward,
+};
 
 #[derive(Clone)]
 pub struct ActionObservation {
@@ -184,6 +190,8 @@ pub struct SearchTree {
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
+    // The tool box
+    tool_box: Arc<ToolBox>,
 }
 
 impl SearchTree {
@@ -803,7 +811,28 @@ impl SearchTree {
         leaf_to_root
     }
 
-    pub fn run_node(&mut self, node_index: usize) {
+    fn update_node(
+        &mut self,
+        node_index: usize,
+        action_observation: Option<ActionObservation>,
+        action_tool_parameters: ActionToolParameters,
+        is_duplicate: bool,
+    ) {
+        let node = self.get_node_mut(node_index);
+        if let None = node {
+            return;
+        }
+        let node = node.expect("if let None to hold");
+        node.is_duplicate = is_duplicate;
+        node.action = Some(action_tool_parameters);
+        node.observation = action_observation;
+    }
+
+    pub async fn run_node(
+        &mut self,
+        node_index: usize,
+        message_properties: SymbolEventMessageProperties,
+    ) {
         let node = self.get_node_mut(node_index);
         if let None = node {
             return;
@@ -816,11 +845,46 @@ impl SearchTree {
 
         // first we generate the message which we want to run inference for the
         // trajectory
-        let _node_trajectory = self.trajectory(node_index);
+        let nodes_trajectory = self.trajectory(node_index);
 
+        let inference_engine = InferenceEngine::new();
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node
+        let inference_result = inference_engine
+            .execute(
+                nodes_trajectory,
+                &self,
+                self.tool_box.clone(),
+                message_properties,
+            )
+            .await;
+
         // - generate the value reward
+        match inference_result {
+            Err(_e) => {
+                return;
+            }
+            // - update the node
+            // - generate the reward for this node
+            Ok(inference_result) => {
+                let action_observation = inference_result.action_observation();
+                let observation_present = action_observation.is_some();
+                let action_tool_parameters = inference_result.action_tool_parameters();
+                let is_duplicate = inference_result.is_duplicate();
+                self.update_node(
+                    node_index,
+                    action_observation,
+                    action_tool_parameters,
+                    is_duplicate,
+                );
+
+                // generate the reward
+                if !is_duplicate && observation_present {
+                    // TODO(skcd): Figure out the correct conditions for giving
+                    // the reward over here
+                }
+            }
+        }
     }
 }

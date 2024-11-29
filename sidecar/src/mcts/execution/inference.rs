@@ -50,17 +50,34 @@ impl InferenceEngineResult {
             is_duplicate,
         }
     }
+
+    pub fn action_observation(&self) -> Option<ActionObservation> {
+        self.action_observation.clone()
+    }
+
+    pub fn action_tool_parameters(&self) -> ActionToolParameters {
+        self.action_tool_parameters.clone()
+    }
+
+    pub fn is_duplicate(&self) -> bool {
+        self.is_duplicate
+    }
 }
 
-struct InferenceEngine {}
+pub struct InferenceEngine {}
 
 impl InferenceEngine {
-    async fn execute(
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub async fn execute(
+        &self,
         mut nodes_trajectory: Vec<&ActionNode>,
         search_tree: &SearchTree,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
-    ) -> Result<ToolOutput, InferenceError> {
+    ) -> Result<InferenceEngineResult, InferenceError> {
         // split the trajectories between the root and the leaf right now
         if nodes_trajectory.is_empty() {
             return Err(InferenceError::EmptyTrajectory);
@@ -127,8 +144,16 @@ impl InferenceEngine {
         }
 
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
-
-        todo!()
+        let execution_and_observe = self
+            .generate_observation_for_node(
+                leaf,
+                search_tree,
+                message_history,
+                tool_box,
+                message_properties,
+            )
+            .await;
+        execution_and_observe
     }
 
     async fn generate_observation_for_node(

@@ -36,6 +36,12 @@ jobs:
       run: |
         ./package.sh
 
+    - name: Get version from Cargo.toml
+      id: get_version
+      run: |
+        VERSION=$(grep -m1 '^version = ' sidecar/Cargo.toml | cut -d '"' -f2)
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+
     - name: Upload to GCP bucket generated zip file
       env:
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -48,7 +54,9 @@ jobs:
         gcloud auth activate-service-account --key-file=gcp_sa_key.json
         # Set your GCP project
         gcloud config set project $GCP_PROJECT_ID
-        # Copy the built binary to the GCP bucket
-        gsutil cp sidecar.zip gs://sidecar-bin/linux/sidecar_64.zip
+        # Copy the built binary to version-specific folder in GCP bucket
+        gsutil cp sidecar.zip gs://sidecar-bin/linux/$VERSION/sidecar_64.zip
+        # Also update the latest version
+        gsutil cp sidecar.zip gs://sidecar-bin/linux/latest/sidecar_64.zip
         # Remove the service account key file
         rm gcp_sa_key.json

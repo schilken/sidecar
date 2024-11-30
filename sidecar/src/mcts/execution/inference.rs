@@ -15,7 +15,6 @@ use crate::{
         tool::{
             input::{ToolInput, ToolInputPartial},
             lsp::{open_file::OpenFileRequest, search_file::SearchFileContentInput},
-            output::ToolOutput,
             r#type::Tool,
             repo_map::generator::RepoMapGeneratorRequest,
             session::{

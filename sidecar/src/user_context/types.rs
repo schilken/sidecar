@@ -29,6 +29,36 @@ impl VariableType {
     }
 }
 
+/// moving variableInformation between 2 nodes:
+/// fileContext: content, initial_patch, running_patch
+/// file -> content + patch
+/// - copying over to next node:
+/// file (content + patch) => file (content + base_patch)
+/// - when applying change:
+/// fn apply_change(file, updated_content) {
+///     base_content = file + initial_patch
+///     updated_patch = git_patch(base_content, updated_content)
+///     file.patch = updated_patch
+/// }
+///
+/// fn transfer_between_nodes(self) -> Self {
+///     self.base_content = self.base_content
+///     file.initial_patch = git_patch(self.base_content, self.base_content + self.initial_path + self.patch)
+///     file.patch = None
+/// }
+///
+/// fn get_content(self) -> String {
+///     self.base_content + self.initial_patch + self.patch
+/// }
+///
+/// fn get_patch_in_node(self) -> Option<String> {
+///     self.patch
+/// }
+///
+/// fn get_patch_from_root_including_node(self) -> Option<String> {
+///     git_patch(self.base_content, self.base_content + self.initial_patch + self.patch)
+/// }
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct VariableInformation {
     pub start_position: Position,
@@ -39,6 +69,10 @@ pub struct VariableInformation {
     pub variable_type: VariableType,
     pub content: String,
     pub language: String,
+    // track the patch which we will be applying to the variable
+    // this will only work for file type variables
+    pub patch: Option<String>,
+    pub initial_patch: Option<String>,
 }
 
 impl VariableInformation {
@@ -65,6 +99,8 @@ impl VariableInformation {
             variable_type: VariableType::Selection,
             content,
             language,
+            patch: None,
+            initial_patch: None,
         }
     }
 
@@ -83,6 +119,61 @@ impl VariableInformation {
             variable_type: VariableType::File,
             content,
             language,
+            patch: None,
+            initial_patch: None,
+        }
+    }
+
+    fn copy_at_instance(mut self) -> Self {
+        if let Some(node_patch) = self.patch.clone() {
+            // update our patch first by generating the initial_patch as the patch
+            // up until the previous node
+            let base_content = self.base_content();
+            let patch = diffy::Patch::from_str(&node_patch);
+            let final_content =
+                diffy::apply(&base_content, &patch.expect("Patch generation should work"))
+                    .expect("diffy::apply to work");
+            self.initial_patch =
+                Some(diffy::create_patch(&base_content, &final_content).to_string());
+
+            // reset our patch
+            self.patch = None;
+        }
+        self
+    }
+
+    fn base_content(&self) -> String {
+        if let Some(initial_patch) = self.initial_patch.as_ref() {
+            let patch = diffy::Patch::from_str(&initial_patch);
+            diffy::apply(&self.content, &patch.expect("Patch generation should work"))
+                .expect("diffy::apply to work")
+        } else {
+            self.content.to_owned()
+        }
+    }
+
+    pub fn update_content(mut self, updated_content: &str) -> Self {
+        let base_content = self.base_content();
+        self.patch = Some(diffy::create_patch(&base_content, updated_content).to_string());
+        self
+    }
+
+    pub fn patch_from_root(&self) -> Option<String> {
+        let base_content = self.base_content();
+        let original_content = self.content.to_owned();
+
+        // apply our current patch to the base_content
+        // to generate the final file content at this point
+        if let Some(patch) = self.patch.clone() {
+            let patch = diffy::Patch::from_str(&patch);
+            let current_content = diffy::apply(
+                &base_content,
+                &patch.expect("diffy::Patch::from_str to work"),
+            )
+            .expect("diffy::apply to work");
+            Some(diffy::create_patch(&original_content, &current_content).to_string())
+        } else {
+            self.initial_patch.to_owned()
         }
     }
 
@@ -99,14 +190,14 @@ impl VariableInformation {
     }
 
     pub fn to_xml(self) -> String {
-        let variable_name = self.name;
+        let variable_name = self.name.to_owned();
         let location = format!(
             "{}:{}-{}",
             self.fs_file_path,
             self.start_position.line(),
             self.end_position.line(),
         );
-        let content = self.content;
+        let content = self.base_content();
         let language = self.language;
 
         match self.variable_type {
@@ -448,6 +539,27 @@ impl UserContext {
         self.variables
             .iter()
             .any(|variable| variable.variable_type == VariableType::Selection)
+    }
+
+    pub fn update_file_content(mut self, fs_file_path: &str, updated_content: &str) -> Self {
+        self.variables = self
+            .variables
+            .to_vec()
+            .into_iter()
+            .map(|mut variable| {
+                if variable.is_file() {
+                    if variable.fs_file_path == fs_file_path {
+                        // now apply the updated content to the file
+                        variable.update_content(updated_content)
+                    } else {
+                        variable
+                    }
+                } else {
+                    variable
+                }
+            })
+            .collect();
+        self
     }
 
     // we want to carry over the variable information from previous steps, we can

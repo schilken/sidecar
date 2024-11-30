@@ -62,6 +62,7 @@ use super::{
     ref_filter::ref_filter::ReferenceFilterBroker,
     repo_map::generator::RepoMapGeneratorClient,
     rerank::base::ReRankBroker,
+    reward::client::RewardClientGenerator,
     search::big_search::BigSearchBroker,
     session::{
         ask_followup_question::AskFollowupQuestions, attempt_completion::AttemptCompletionClient,
@@ -444,7 +445,7 @@ impl ToolBroker {
         );
         tools.insert(
             ToolType::ContextDriveHotStreakReply,
-            Box::new(SessionHotStreakClient::new(llm_client)),
+            Box::new(SessionHotStreakClient::new(llm_client.clone())),
         );
         tools.insert(ToolType::TerminalCommand, Box::new(TerminalTool::new()));
         tools.insert(
@@ -469,6 +470,10 @@ impl ToolBroker {
             Box::new(SubProcessSpawnedPendingOutputClient::new()),
         );
         tools.insert(ToolType::TestRunner, Box::new(TestRunner {}));
+        tools.insert(
+            ToolType::RewardGeneration,
+            Box::new(RewardClientGenerator::new(llm_client)),
+        );
         // we also want to add the re-ranking tool here, so we invoke it freely
         Self { tools }
     }

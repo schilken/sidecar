@@ -106,6 +106,8 @@ pub struct ActionNode {
     user_context: UserContext,
     // the message associated with the node
     message: Option<String>,
+    // the reward value for the node
+    reward_value: f32,
 }
 
 impl ActionNode {
@@ -122,6 +124,7 @@ impl ActionNode {
             observation: None,
             user_context: UserContext::default(),
             message: None,
+            reward_value: 0.0,
         }
     }
 
@@ -232,6 +235,10 @@ impl SearchTree {
 
     pub fn tools(&self) -> Vec<ToolType> {
         self.tools.to_vec()
+    }
+
+    pub fn tool_box(&self) -> Arc<ToolBox> {
+        self.tool_box.clone()
     }
 
     fn add_node(&mut self, node_index: usize, node: ActionNode) {
@@ -848,15 +855,17 @@ impl SearchTree {
         node_index: usize,
         message_properties: SymbolEventMessageProperties,
     ) {
-        let node = self.get_node_mut(node_index);
-        if let None = node {
-            return;
+        {
+            let node = self.get_node_mut(node_index);
+            if let None = node {
+                return;
+            }
+            let node = node.expect("if let None to hold");
+            // reset the node
+            node.reset();
+            // reset the graph at this node as well
+            self.reset_children_for_node(node_index);
         }
-        let node = node.expect("if let None to hold");
-        // reset the node
-        node.reset();
-        // reset the graph at this node as well
-        self.reset_children_for_node(node_index);
 
         // first we generate the message which we want to run inference for the
         // trajectory
@@ -871,7 +880,7 @@ impl SearchTree {
                 nodes_trajectory,
                 &self,
                 self.tool_box.clone(),
-                message_properties,
+                message_properties.clone(),
             )
             .await;
 
@@ -898,7 +907,60 @@ impl SearchTree {
                 if !is_duplicate && observation_present {
                     // TODO(skcd): Figure out the correct conditions for giving
                     // the reward over here
+                    let nodes_trajectory = self.trajectory(node_index);
+                    let reward = RewardGeneration::new()
+                        .generate_reward(nodes_trajectory, &self, message_properties.clone())
+                        .await;
+
+                    let node = self.get_node_mut(node_index);
+                    if let Some(node) = node {
+                        match reward {
+                            Ok(reward) => {
+                                node.reward = Some(reward);
+                            }
+                            Err(_e) => {
+                                node.reward = None;
+                            }
+                        }
+                    };
                 }
+            }
+        }
+    }
+
+    pub fn backpropogate(&mut self, node_index: usize) {
+        let node_reward = self
+            .get_node(node_index)
+            .map(|node| node.reward().cloned())
+            .flatten();
+        if let None = node_reward {
+            return;
+        }
+        let node_reward = node_reward.expect("if let None to hold");
+        let reward_value = node_reward.value();
+        let mut current_node_index = node_index;
+        loop {
+            let node_parent_index = {
+                let node = self.get_node(node_index);
+                if let Some(node) = node {
+                    let parent = self.parent(node);
+                    parent.map(|parent_node| parent_node.index())
+                } else {
+                    None
+                }
+            };
+            let node = self.get_node_mut(current_node_index);
+            if let Some(node) = node {
+                node.reward_value = node.reward_value + reward_value as f32;
+                node.visits = node.visits + 1;
+                if let Some(parent_index) = node_parent_index {
+                    current_node_index = parent_index
+                } else {
+                    // if we have no parent, we have reached the root so we are done
+                    break;
+                }
+            } else {
+                break;
             }
         }
     }

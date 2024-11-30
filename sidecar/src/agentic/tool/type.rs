@@ -143,6 +143,8 @@ pub enum ToolType {
     RepoMapGeneration,
     // Sub-process spawned pending output
     SubProcessSpawnedPendingOutput,
+    // Reward generation
+    RewardGeneration,
 }
 
 impl std::fmt::Display for ToolType {
@@ -240,6 +242,7 @@ impl std::fmt::Display for ToolType {
                 write!(f, "Sub process spawned pending output")
             }
             ToolType::TestRunner => write!(f, "test_runner"),
+            ToolType::RewardGeneration => write!(f, "reward_generation"),
         }
     }
 }
@@ -287,6 +290,18 @@ impl ToolRewardScale {
             maximum,
             description: description.to_owned(),
         }
+    }
+
+    pub fn minimum(&self) -> i32 {
+        self.minimum
+    }
+
+    pub fn maximum(&self) -> i32 {
+        self.maximum
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
     }
 }
 

@@ -34,6 +34,7 @@ pub mod plan;
 pub mod ref_filter;
 pub mod repo_map;
 pub mod rerank;
+pub mod reward;
 pub mod search;
 pub mod session;
 pub mod swe_bench;

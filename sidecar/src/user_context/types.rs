@@ -546,7 +546,7 @@ impl UserContext {
             .variables
             .to_vec()
             .into_iter()
-            .map(|mut variable| {
+            .map(|variable| {
                 if variable.is_file() {
                     if variable.fs_file_path == fs_file_path {
                         // now apply the updated content to the file

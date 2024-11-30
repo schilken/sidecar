@@ -54,6 +54,7 @@ use super::{
     plan::{generator::StepGeneratorResponse, reasoning::ReasoningResponse},
     repo_map::generator::RepoMapGeneratorResponse,
     rerank::base::ReRankEntriesForBroker,
+    reward::client::RewardGenerationResponse,
     session::{
         ask_followup_question::AskFollowupQuestionsResponse,
         attempt_completion::AttemptCompletionClientResponse, chat::SessionChatClientResponse,
@@ -220,6 +221,8 @@ pub enum ToolOutput {
     SubProcessSpawnedPendingOutput(SubProcessSpanwedPendingOutputResponse),
     // Test runner
     TestRunner(TestRunnerResponse),
+    // Reward generation
+    RewardGeneration(RewardGenerationResponse),
 }
 
 impl ToolOutput {
@@ -864,6 +867,13 @@ impl ToolOutput {
     ) -> Option<SubProcessSpanwedPendingOutputResponse> {
         match self {
             ToolOutput::SubProcessSpawnedPendingOutput(response) => Some(response),
+            _ => None,
+        }
+    }
+
+    pub fn get_reward_generation_response(self) -> Option<RewardGenerationResponse> {
+        match self {
+            ToolOutput::RewardGeneration(response) => Some(response),
             _ => None,
         }
     }

@@ -1,6 +1,6 @@
 //! The various errors which are part of the reward modul
 
-use crate::agentic::symbol::errors::SymbolError;
+use crate::agentic::{symbol::errors::SymbolError, tool::errors::ToolError};
 
 #[derive(thiserror::Error, Debug)]
 pub enum RewardError {
@@ -15,4 +15,13 @@ pub enum RewardError {
 
     #[error("Problem statement not found")]
     ProblemStatementNotFound,
+
+    #[error("Action not found")]
+    ActionNotFound,
+
+    #[error("Tool error: {0}")]
+    ToolError(#[from] ToolError),
+
+    #[error("Wrong tool output asked")]
+    WrongTool,
 }

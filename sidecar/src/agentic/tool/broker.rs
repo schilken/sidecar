@@ -516,3 +516,33 @@ impl Tool for ToolBroker {
         vec![]
     }
 }
+
+impl ToolBroker {
+    pub fn generate_evaluation_criteria(
+        &self,
+        tool_type: ToolType,
+        trajectory_length: usize,
+    ) -> Vec<String> {
+        let tool_in_map = self.tools.get(&tool_type);
+        match tool_in_map {
+            Some(tool) => tool.get_evaluation_criteria(trajectory_length),
+            None => {
+                vec![]
+            }
+        }
+    }
+
+    pub fn generate_reward_scale(
+        &self,
+        tool_type: ToolType,
+        trajectory_length: usize,
+    ) -> Vec<ToolRewardScale> {
+        let tool_in_map = self.tools.get(&tool_type);
+        match tool_in_map {
+            Some(tool) => tool.get_reward_scale(trajectory_length),
+            None => {
+                vec![]
+            }
+        }
+    }
+}

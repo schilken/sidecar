@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use futures::{stream, StreamExt};
-use llm_client::broker::LLMBroker;
 use llm_client::clients::types::LLMType;
 use llm_client::provider::{
     AnthropicAPIKey, FireworksAPIKey, GoogleAIStudioKey, LLMProvider, LLMProviderAPIKeys

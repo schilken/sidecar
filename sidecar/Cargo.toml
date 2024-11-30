@@ -95,6 +95,7 @@ console-subscriber = "0.2.0"
 similar = "2.6.0"
 globset = "0.4.15"
 dirs = "5.0.1"
+diffy = "0.4.0"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.26.2", default-features = false, features = [ "resource" ] }

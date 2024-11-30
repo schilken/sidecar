@@ -52,6 +52,10 @@ impl ActionObservation {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn expect_correction(&self) -> bool {
+        self.expect_correction
+    }
 }
 
 #[derive(Clone)]
@@ -119,6 +123,10 @@ impl ActionNode {
             user_context: UserContext::default(),
             message: None,
         }
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn observation(&self) -> Option<ActionObservation> {
@@ -198,6 +206,10 @@ pub struct SearchTree {
 }
 
 impl SearchTree {
+    pub fn root(&self) -> Option<&ActionNode> {
+        self.index_to_node.get(&self.root_node_index)
+    }
+
     pub fn parent(&self, node: &ActionNode) -> Option<&ActionNode> {
         if let Some(parent_index) = self.node_to_parent.get(&node.index) {
             self.index_to_node.get(parent_index)
@@ -808,7 +820,7 @@ impl SearchTree {
         is_duplicate
     }
 
-    fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
+    pub fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
         let mut leaf_to_root = self.leaf_to_root(node_index);
         leaf_to_root.reverse();
         leaf_to_root

@@ -229,6 +229,40 @@ pub struct SearchTree {
 }
 
 impl SearchTree {
+    pub fn new(
+        max_expansions: usize,
+        max_depth: u32,
+        max_iterations: usize,
+        max_finished_nodes: Option<usize>,
+        reward_threshold: Option<f32>,
+        min_finished_nodes: Option<usize>,
+        selector: Selector,
+        tools: Vec<ToolType>,
+        root_directory: String,
+        llm_client: Arc<LLMBroker>,
+        repo_name: String,
+        tool_box: Arc<ToolBox>,
+    ) -> Self {
+        let root_node = ActionNode::new(0, max_expansions);
+        Self {
+            index_to_node: vec![(0, root_node)].into_iter().collect(),
+            node_to_children: Default::default(),
+            node_to_parent: Default::default(),
+            max_expansions,
+            root_node_index: 0,
+            max_depth,
+            max_iterations,
+            max_finished_nodes,
+            reward_threshold,
+            min_finished_nodes,
+            selector,
+            tool_box,
+            tools,
+            root_directory,
+            llm_client,
+            repo_name,
+        }
+    }
     pub fn root(&self) -> Option<&ActionNode> {
         self.index_to_node.get(&self.root_node_index)
     }
@@ -440,6 +474,20 @@ impl SearchTree {
         }
     }
 
+    pub fn calculate_exploitation(&self, node_index: usize, exploitation_weigth: f32) -> f32 {
+        // should we go for the average weight over here on the trajectory
+        // or should we go for the absolute weight? open question
+        if let Some(reward) = self
+            .get_node(node_index)
+            .map(|node| node.reward())
+            .flatten()
+        {
+            reward.value() as f32 * exploitation_weigth
+        } else {
+            0.0
+        }
+    }
+
     pub fn calculate_exploration(&self, node_index: usize, exploration_weight: f32) -> f32 {
         // Retrieve the current node
         let node = self
@@ -529,20 +577,20 @@ impl SearchTree {
         high_value_threshold: f32,
         bad_child_actions: Vec<ToolType>,
         low_value_threshold: f32,
-        exploration_weight: f32,
+        exploitation_weight: f32,
     ) -> f32 {
         let node = self.get_node(node_index);
         if let None = node {
             return 0.0;
         }
         let node = node.expect("if let None to hold");
-        let exploration = self.calculate_exploration(node_index, exploration_weight);
+        let exploitation = self.calculate_exploitation(node_index, exploitation_weight);
         let node_children = self.children(node);
         let node_children = node_children
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default();
         // empty of no children
-        if !node_children.is_empty() && exploration >= high_value_threshold {
+        if !node_children.is_empty() && exploitation >= high_value_threshold {
             let child_rewards = node_children
                 .to_vec()
                 .into_iter()
@@ -573,7 +621,7 @@ impl SearchTree {
                 // this is an approximation to how much value we can give back
                 // the 5 here is sus but I presume it comes from the expansion factor
                 if average_child_reward_value <= low_value_threshold {
-                    return (exploration - average_child_reward_value) * 5.0;
+                    return (exploitation - average_child_reward_value) * 5.0;
                 }
             }
         }
@@ -617,7 +665,7 @@ impl SearchTree {
         node_index: usize,
         high_value_threshold: f32,
         low_value_threshold: f32,
-        exploration_weight: f32,
+        exploitation_weight: f32,
     ) -> f32 {
         let node = self.get_node(node_index);
         if let None = node {
@@ -628,7 +676,7 @@ impl SearchTree {
         let node_children = node_children
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default();
-        let exploration = self.calculate_exploration(node_index, exploration_weight);
+        let exploration = self.calculate_exploitation(node_index, exploitation_weight);
         if !node_children.is_empty() {
             let parent_node = self.parent(node);
             if let Some(parent) = parent_node {

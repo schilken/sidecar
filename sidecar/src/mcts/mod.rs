@@ -3,5 +3,5 @@
 pub mod action_node;
 pub(crate) mod execution;
 pub(crate) mod feedback;
-pub(crate) mod selector;
+pub mod selector;
 pub(crate) mod value_function;

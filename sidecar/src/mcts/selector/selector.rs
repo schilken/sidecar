@@ -75,6 +75,45 @@ pub struct Selector {
 }
 
 impl Selector {
+    pub fn new(
+        exploitation_weight: f32,
+        use_average_reward: bool,
+        exploration_weight: f32,
+        depth_weight: f32,
+        depth_bonus_factor: f32,
+        high_value_threshold: f32,
+        low_value_threshold: f32,
+        very_high_value_threshold: f32,
+        high_value_leaf_bonus_constant: f32,
+        high_value_bad_children_bonus_constant: f32,
+        high_value_child_penalty_constant: f32,
+        finished_trajectory_penalty: f32,
+        expect_correction_bonus: f32,
+        check_for_bad_child_actions: Vec<ToolType>,
+        diversity_weight: f32,
+        duplicate_child_penalty_constant: f32,
+        duplicate_action_penalty_constant: f32,
+    ) -> Self {
+        Self {
+            exploitation_weight,
+            use_average_reward,
+            expect_correction_bonus,
+            exploration_weight,
+            depth_bonus_factor,
+            depth_weight,
+            diversity_weight,
+            high_value_bad_children_bonus_constant,
+            high_value_child_penalty_constant,
+            high_value_leaf_bonus_constant,
+            high_value_threshold,
+            very_high_value_threshold,
+            low_value_threshold,
+            finished_trajectory_penalty,
+            check_for_bad_child_actions,
+            duplicate_action_penalty_constant,
+            duplicate_child_penalty_constant,
+        }
+    }
     /// Calculate the exploitation component of the UCT score.
     ///
     /// Purpose: Favors nodes with higher rewards, encouraging the algorithm to exploit

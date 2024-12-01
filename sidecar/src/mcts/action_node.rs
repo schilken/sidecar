@@ -148,6 +148,10 @@ impl ActionNode {
         self.reward.as_ref()
     }
 
+    pub fn is_duplicate(&self) -> bool {
+        self.is_duplicate
+    }
+
     // TODO(skcd): Fix this and keep track of it properly
     fn has_git_path(&self) -> bool {
         false
@@ -204,8 +208,6 @@ pub struct SearchTree {
     repo_name: String,
     // The tool box
     tool_box: Arc<ToolBox>,
-    // value function generation
-    reward_generation: RewardGeneration,
 }
 
 impl SearchTree {
@@ -291,6 +293,30 @@ impl SearchTree {
             current_node = parent_node;
         }
         current_node
+    }
+
+    pub fn get_sibling_nodes(&self, node_index: usize) -> Vec<&ActionNode> {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return vec![];
+        }
+        let node = node.expect("if let None to hold");
+        let parent = self.parent(node);
+        if parent.is_none() {
+            return vec![];
+        }
+        let parent = parent.expect("if let None to hold");
+
+        // look at all the children of the parent and exclude the node we are at
+        // to get the siblings for the current node
+        self.children(parent)
+            .map(|children| {
+                children
+                    .into_iter()
+                    .filter(|child| child.index != node_index)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Creates the mean reward on the trajectory over here by traversing the tree

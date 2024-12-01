@@ -26,6 +26,7 @@ use super::{
         should_edit::ShouldEditCodeSymbolResponse,
     },
     editor::apply::EditorApplyResponse,
+    feedback::feedback::FeedbackGenerationResponse,
     file::important::FileImportantResponse,
     filtering::broker::{
         CodeToEditFilterResponse, CodeToEditSymbolResponse, CodeToProbeFilterResponse,
@@ -223,6 +224,8 @@ pub enum ToolOutput {
     TestRunner(TestRunnerResponse),
     // Reward generation
     RewardGeneration(RewardGenerationResponse),
+    // Feedback generation
+    FeedbackGeneration(FeedbackGenerationResponse),
 }
 
 impl ToolOutput {
@@ -874,6 +877,13 @@ impl ToolOutput {
     pub fn get_reward_generation_response(self) -> Option<RewardGenerationResponse> {
         match self {
             ToolOutput::RewardGeneration(response) => Some(response),
+            _ => None,
+        }
+    }
+
+    pub fn get_feedback_generation_response(self) -> Option<FeedbackGenerationResponse> {
+        match self {
+            ToolOutput::FeedbackGeneration(response) => Some(response),
             _ => None,
         }
     }

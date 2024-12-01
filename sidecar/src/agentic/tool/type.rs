@@ -145,6 +145,8 @@ pub enum ToolType {
     SubProcessSpawnedPendingOutput,
     // Reward generation
     RewardGeneration,
+    // Feedback generation
+    FeedbackGeneration,
 }
 
 impl std::fmt::Display for ToolType {
@@ -243,6 +245,7 @@ impl std::fmt::Display for ToolType {
             }
             ToolType::TestRunner => write!(f, "test_runner"),
             ToolType::RewardGeneration => write!(f, "reward_generation"),
+            ToolType::FeedbackGeneration => write!(f, "feedback_generation"),
         }
     }
 }

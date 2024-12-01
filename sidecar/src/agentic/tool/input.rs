@@ -32,6 +32,7 @@ use super::{
     },
     editor::apply::EditorApplyRequest,
     errors::ToolError,
+    feedback::feedback::FeedbackGenerationRequest,
     file::file_finder::ImportantFilesFinderQuery,
     filtering::broker::{
         CodeToEditFilterRequest, CodeToEditSymbolRequest, CodeToProbeSubSymbolRequest,
@@ -245,6 +246,8 @@ pub enum ToolInput {
     RunTests(TestRunnerRequest),
     // Reward generation
     RewardGeneration(RewardGenerationRequest),
+    // Feedback generation
+    FeedbackGeneration(FeedbackGenerationRequest),
 }
 
 impl ToolInput {
@@ -332,6 +335,15 @@ impl ToolInput {
             }
             ToolInput::RunTests(_) => ToolType::TestRunner,
             ToolInput::RewardGeneration(_) => ToolType::RewardGeneration,
+            ToolInput::FeedbackGeneration(_) => ToolType::FeedbackGeneration,
+        }
+    }
+
+    pub fn is_feedback_generation_request(self) -> Result<FeedbackGenerationRequest, ToolError> {
+        if let ToolInput::FeedbackGeneration(request) = self {
+            Ok(request)
+        } else {
+            Err(ToolError::WrongToolInput(ToolType::FeedbackGeneration))
         }
     }
 

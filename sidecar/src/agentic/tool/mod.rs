@@ -19,6 +19,7 @@ pub mod code_edit;
 pub mod code_symbol;
 pub mod editor;
 pub mod errors;
+pub mod feedback;
 pub mod file;
 pub mod filtering;
 pub mod git;

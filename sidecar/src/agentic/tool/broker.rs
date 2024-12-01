@@ -29,6 +29,7 @@ use super::{
     },
     editor::apply::EditorApply,
     errors::ToolError,
+    feedback::feedback::FeedbackClientGenerator,
     file::file_finder::ImportantFilesFinderBroker,
     filtering::broker::CodeToEditFormatterBroker,
     git::{diff_client::GitDiffClient, edited_files::EditedFiles},
@@ -472,7 +473,11 @@ impl ToolBroker {
         tools.insert(ToolType::TestRunner, Box::new(TestRunner {}));
         tools.insert(
             ToolType::RewardGeneration,
-            Box::new(RewardClientGenerator::new(llm_client)),
+            Box::new(RewardClientGenerator::new(llm_client.clone())),
+        );
+        tools.insert(
+            ToolType::FeedbackGeneration,
+            Box::new(FeedbackClientGenerator::new(llm_client)),
         );
         // we also want to add the re-ranking tool here, so we invoke it freely
         Self { tools }

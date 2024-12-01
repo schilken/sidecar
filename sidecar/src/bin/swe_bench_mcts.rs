@@ -11,18 +11,17 @@ use sidecar::{
         symbol::{
             events::{input::SymbolEventRequestId, message_event::SymbolEventMessageProperties},
             identifier::LLMProperties,
-            manager::SymbolManager,
             tool_box::ToolBox,
         },
         tool::{
             broker::{ToolBroker, ToolBrokerConfiguration},
             code_edit::models::broker::CodeEditBroker,
-            session::service::{SessionService, TestGenerateCompletion},
+            r#type::ToolType,
         },
     },
     chunking::{editor_parsing::EditorParsing, languages::TSLanguageParsing},
     inline_completion::symbols_tracker::SymbolTrackerInline,
-    repo::types::RepoRef,
+    mcts::{action_node::SearchTree, selector::selector::Selector},
 };
 use std::{path::PathBuf, sync::Arc};
 
@@ -113,17 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let symbol_tracker = Arc::new(SymbolTrackerInline::new(editor_parsing.clone()));
 
-    let symbol_manager = Arc::new(SymbolManager::new(
-        tool_broker.clone(),
-        symbol_tracker.clone(),
-        editor_parsing.clone(),
-        LLMProperties::new(
-            LLMType::ClaudeSonnet,
-            LLMProvider::Anthropic,
-            LLMProviderAPIKeys::Anthropic(AnthropicAPIKey::new("".to_owned())),
-        ),
-    ));
-
     let tool_box = Arc::new(ToolBox::new(tool_broker, symbol_broker, editor_parsing));
 
     let editor_url = args.editor_url.to_owned();
@@ -179,7 +167,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_configuration,
     );
 
+    let selector = Selector::new(
+        1.0,                         // exploitation_weight
+        false,                       // use_average_reward
+        1.0,                         // exploration_weight
+        0.8,                         // depth_weight
+        0.0,                         // depth_bonus_factor
+        50.0,                        // high_value_threshold
+        0.0,                         // low_value_threshold
+        75.0,                        // very_high_value_threshold
+        50.0,                        // high_value_leaf_bonus_constant
+        20.0,                        // high_value_bad_children_bonus_constant
+        5.0,                         // high_value_child_penalty_constant
+        50.0,                        // finished_trajectory_penalty
+        50.0,                        // expect_correction_bonus
+        vec![ToolType::CodeEditing], // check_for_bad_child_actions
+        100.0,                       // diversity_weight
+        25.0,                        // duplicate_child_penalty_constant
+        50.0,                        // duplicate_action_penalty_constant
+    );
+
     // Instantiate the mcts tree over here and start the search
+    let mut search_tree = SearchTree::new(
+        3,                                      // max_expansions
+        20,                                     // max_depth of the tree
+        100,                                    // max_iterations
+        Some(3),                                // max_finished_nodes
+        None,                                   // reward_threshold
+        Some(2),                                // min_finished_nodes
+        input_parts.git_drname.to_owned(),      // root_directory
+        repo_name,                              // repo_name
+        input_parts.instance.problem_statement, // problem_statment
+        selector,                               // selector
+        vec![
+            ToolType::ListFiles,
+            ToolType::SearchFileContentWithRegex,
+            ToolType::OpenFile,
+            ToolType::CodeEditing,
+            ToolType::AttemptCompletion,
+            ToolType::RepoMapGeneration,
+            ToolType::TerminalCommand,
+            ToolType::TestRunner,
+        ], // tools
+        tool_box,                               // tool_box
+        llm_broker,                             // llm_client
+    );
+
+    // Run the search
+    search_tree.run_search(message_properties).await;
 
     Ok(())
 }

@@ -144,6 +144,11 @@ impl ActionNode {
         self.action.clone()
     }
 
+    pub fn set_message(mut self, message: String) -> Self {
+        self.message = Some(message);
+        self
+    }
+
     pub fn message(&self) -> Option<String> {
         self.message.clone()
     }
@@ -236,14 +241,15 @@ impl SearchTree {
         max_finished_nodes: Option<usize>,
         reward_threshold: Option<f32>,
         min_finished_nodes: Option<usize>,
+        root_directory: String,
+        repo_name: String,
+        problem_statement: String,
         selector: Selector,
         tools: Vec<ToolType>,
-        root_directory: String,
-        llm_client: Arc<LLMBroker>,
-        repo_name: String,
         tool_box: Arc<ToolBox>,
+        llm_client: Arc<LLMBroker>,
     ) -> Self {
-        let root_node = ActionNode::new(0, max_expansions);
+        let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
             index_to_node: vec![(0, root_node)].into_iter().collect(),
             node_to_children: Default::default(),

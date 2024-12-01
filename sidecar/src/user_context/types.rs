@@ -365,6 +365,15 @@ impl UserContext {
         }
     }
 
+    pub fn copy_at_instance(mut self) -> Self {
+        self.variables = self
+            .variables
+            .into_iter()
+            .map(|variable| variable.copy_at_instance())
+            .collect();
+        self
+    }
+
     pub fn add_variables(mut self, variables: Vec<VariableInformation>) -> Self {
         self.variables.extend(variables);
         self

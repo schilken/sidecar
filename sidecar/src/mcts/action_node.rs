@@ -1,4 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use llm_client::broker::LLMBroker;
 
@@ -12,6 +15,7 @@ use crate::{
 
 use super::{
     execution::inference::InferenceEngine,
+    feedback::feedback::FeedbackGenerator,
     selector::selector::Selector,
     value_function::reward::{Reward, RewardGeneration},
 };
@@ -186,6 +190,11 @@ impl ActionNode {
     pub fn feedback(&self) -> Option<String> {
         self.feedback.clone()
     }
+
+    pub fn update_user_context(mut self, user_context: UserContext) -> Self {
+        self.user_context = user_context;
+        self
+    }
 }
 
 pub struct SearchTree {
@@ -198,6 +207,15 @@ pub struct SearchTree {
     root_node_index: usize,
     /// maximum depth the nodes can go to
     max_depth: u32,
+    /// maximum iterations or actions we will run
+    max_iterations: usize,
+    /// the maximum finished nodes the tree can have
+    max_finished_nodes: Option<usize>,
+    /// The min reward threshold to consider before finishing
+    reward_threshold: Option<f32>,
+    /// The minimum number of finished nodes to consider before finishing
+    min_finished_nodes: Option<usize>,
+
     selector: Selector,
     tools: Vec<ToolType>,
     // the working directory
@@ -270,6 +288,83 @@ impl SearchTree {
 
     pub fn get_node(&self, node_index: usize) -> Option<&ActionNode> {
         self.index_to_node.get(&node_index)
+    }
+
+    fn finished_nodes(&self) -> Vec<&ActionNode> {
+        self.index_to_node
+            .values()
+            .into_iter()
+            .filter_map(|node| match node.action() {
+                Some(action) => match action.to_tool_type() {
+                    Some(tool_type) => {
+                        if tool_type == ToolType::AttemptCompletion {
+                            Some(node)
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
+                },
+                None => None,
+            })
+            .collect()
+    }
+
+    /// Detects if wee should be allowed to keep running search or we are done
+    pub fn is_finished(&self) -> bool {
+        if self.index_to_node.len() >= self.max_iterations {
+            true
+        } else {
+            let finished_nodes = self.finished_nodes();
+            let unique_finished_parent_nodes = finished_nodes
+                .into_iter()
+                .filter_map(|node| {
+                    let parent = self.parent(node);
+                    match parent {
+                        Some(parent) => Some(parent),
+                        None => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let unique_finished_parent_node_ids = unique_finished_parent_nodes
+                .iter()
+                .map(|node| node.index())
+                .collect::<HashSet<usize>>();
+
+            // If we have more finished nodes
+            if let Some(max_finished_nodes) = self.max_finished_nodes {
+                if unique_finished_parent_node_ids.len() >= max_finished_nodes {
+                    return true;
+                }
+            }
+
+            // if we have reached our reward threshold
+            if let Some(reward_threshold) = self.reward_threshold {
+                if unique_finished_parent_nodes.iter().any(|node| {
+                    if let Some(reward) = node.reward() {
+                        if reward.value() as f32 >= reward_threshold {
+                            if let Some(min_finished_nodes) = self.min_finished_nodes {
+                                if unique_finished_parent_node_ids.len() >= min_finished_nodes {
+                                    return true;
+                                }
+                            }
+                        }
+                        false
+                    } else {
+                        false
+                    }
+                }) {
+                    return true;
+                }
+            }
+
+            let expandable_nodes = self.expandable_node(self.root_node_index);
+            if !expandable_nodes.is_empty() {
+                return true;
+            }
+            false
+        }
     }
 
     fn children_indices(&self, node: &ActionNode) -> Option<Vec<usize>> {
@@ -642,11 +737,6 @@ impl SearchTree {
         node.visits as f32
     }
 
-    /// Iterates on the search tree until its finished completely
-    pub fn run_search(&mut self, node: ActionNode) -> ActionNode {
-        todo!("")
-    }
-
     pub fn is_node_fully_expanded(&self, node_index: usize) -> bool {
         let node = self.get_node(node_index);
         // if node is not found, then we can't expand it
@@ -768,7 +858,9 @@ impl SearchTree {
 
         let child_node_index = self.get_new_node_index();
 
-        let child_node = ActionNode::new(child_node_index, self.max_expansions);
+        let child_node = ActionNode::new(child_node_index, self.max_expansions)
+            // transfer the user context properly
+            .update_user_context(node.user_context.clone().copy_at_instance());
         // keep track of the child node
         self.add_node(child_node_index, child_node);
         // keep track of the edges
@@ -989,5 +1081,53 @@ impl SearchTree {
                 break;
             }
         }
+    }
+
+    async fn generate_feedback_for_node(
+        &mut self,
+        node_index: usize,
+        message_properties: SymbolEventMessageProperties,
+    ) {
+        let nodes_trajectory = self.trajectory(node_index);
+        let feedback = FeedbackGenerator::new()
+            .generate_feedback_for_node(nodes_trajectory, &self, message_properties)
+            .await;
+        if let Ok(Some(feedback)) = feedback {
+            let node = self.get_node_mut(node_index);
+            if let Some(node) = node {
+                node.feedback = Some(feedback.feedback().to_owned());
+            }
+        }
+    }
+
+    pub async fn run_search(&mut self, message_properties: SymbolEventMessageProperties) {
+        loop {
+            if self.is_finished() {
+                break;
+            }
+
+            // select the node for running search
+            let selected_node = self.select();
+            if let None = selected_node {
+                break;
+            }
+            let selected_node = selected_node.expect("if let None to hold");
+
+            // expand the node
+            let new_node = self.expand(selected_node);
+            if let None = new_node {
+                break;
+            }
+            let new_node = new_node.expect("if let None to hold");
+            // generate feedback for the new node
+            self.generate_feedback_for_node(new_node, message_properties.clone())
+                .await;
+            // run the node
+            self.run_node(new_node, message_properties.clone()).await;
+            // back-propogate
+            self.backpropogate(new_node);
+        }
+
+        // over here we try to get the best trajectory
     }
 }

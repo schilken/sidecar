@@ -141,7 +141,7 @@ impl Selector {
             self.high_value_threshold,
             self.check_for_bad_child_actions.to_vec(),
             self.low_value_threshold,
-            self.exploration_weight,
+            self.exploitation_weight,
         )
     }
 
@@ -178,7 +178,7 @@ impl Selector {
             node_index,
             self.high_value_threshold,
             self.low_value_threshold,
-            self.exploration_weight,
+            self.exploitation_weight,
         )
     }
 
@@ -225,6 +225,7 @@ impl Selector {
         let finished_trajectory_penalty =
             self.calculate_finished_trajectory_penalty(node_index, graph);
         let expect_correction_bonus = self.calculate_expect_correction_bonus(node_index, graph);
+        // TODO(skcd): We have to update the diversity score over here
         let diversity_bonus = 0.0;
         let duplicate_child_penalty = 0.0;
         let duplicate_action_penalty = 0.0;

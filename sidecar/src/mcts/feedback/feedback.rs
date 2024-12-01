@@ -1,7 +1,6 @@
 //! The feedback generator over here takes in the node we are on and tries to generate
 //! feedback to pick an action which will lead to diversity
 
-use gix::revwalk::graph::commit::to_owned;
 use llm_client::clients::types::LLMClientMessage;
 
 use crate::{
@@ -13,10 +12,7 @@ use crate::{
             r#type::{Tool, ToolType},
         },
     },
-    mcts::{
-        action_node::{ActionNode, SearchTree},
-        value_function::error::RewardError,
-    },
+    mcts::action_node::{ActionNode, SearchTree},
 };
 
 use super::error::FeedbackError;
@@ -28,7 +24,19 @@ pub struct FeedbackToNode {
     feedback: String,
 }
 
+impl FeedbackToNode {
+    pub fn feedback(&self) -> &str {
+        &self.feedback
+    }
+}
+
 pub struct FeedbackGenerator {}
+
+impl FeedbackGenerator {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 impl FeedbackGenerator {
     pub async fn generate_feedback_for_node(

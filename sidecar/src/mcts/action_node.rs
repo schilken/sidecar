@@ -1416,13 +1416,18 @@ impl SearchTree {
 
         // Print the current node
         println!(
-            "{}Node {} (v:{}, val:{:.2}, r:{}) {}",
+            "{}Node {} (v:{}, val:{:.2}, r:{}) {} {}",
             prefix,
             node_index,
             node.visits,
             node.reward_value,
             node.reward.as_ref().map_or(0, |r| r.value()),
-            action_str
+            action_str,
+            if node.is_duplicate {
+                " (duplicate)"
+            } else {
+                ""
+            }
         );
 
         // Get children of the current node

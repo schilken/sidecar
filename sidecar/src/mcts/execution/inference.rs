@@ -82,12 +82,14 @@ impl InferenceEngine {
             return Err(InferenceError::EmptyTrajectory);
         }
 
-        let root_to_leaf_direction = nodes_trajectory.split_off(nodes_trajectory.len() - 1);
+        println!("nodes_trajectory::({:?})", &nodes_trajectory);
+
         let leaf = nodes_trajectory.pop();
         if leaf.is_none() {
             return Err(InferenceError::EmptyTrajectory);
         }
         let leaf = leaf.expect("is_none to hold");
+        let root_to_leaf_direction = nodes_trajectory;
 
         // keep track of the last updated file
         let mut last_updated_file: HashMap<String, usize> = Default::default();
@@ -116,6 +118,16 @@ impl InferenceEngine {
         // message history
         let mut message_history = vec![];
 
+        // this implies that we are at the root-node since the root_to_leaf should be
+        // empty for that case
+        // println!("root_to_leaf_directory::({:?})", &root_to_leaf_direction);
+        // println!("leaf_node::({:?})", leaf);
+        // if root_to_leaf_direction.is_empty() {
+        //     if let Some(message) = leaf.message() {
+        //         message_history.push(LLMClientMessage::user(message));
+        //     }
+        // }
+
         // Now create the messages for the previous nodes which we have
         for (_index, current_node) in root_to_leaf_direction.iter().enumerate() {
             if let Some(message) = current_node.message() {
@@ -141,6 +153,8 @@ impl InferenceEngine {
         if let Some(feedback) = leaf.feedback() {
             message_history.push(LLMClientMessage::user(feedback));
         }
+
+        println!("message_history::({:?})", &message_history);
 
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
         let execution_and_observe = self

@@ -49,12 +49,12 @@ impl FeedbackGenerator {
             return Err(FeedbackError::EmptyTrajectory);
         }
 
-        let root_to_leaf = nodes_trajectory.split_off(nodes_trajectory.len() - 1);
         let leaf = nodes_trajectory.pop();
         if leaf.is_none() {
             return Err(FeedbackError::EmptyTrajectory);
         }
         let leaf = leaf.expect("is_none to hold");
+        let root_to_leaf = nodes_trajectory;
 
         let siblings = search_tree.get_sibling_nodes(leaf.index());
         // if we have no siblings right now, then we can't really generate feedback

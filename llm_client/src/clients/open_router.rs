@@ -71,7 +71,7 @@ impl OpenRouterClient {
     pub fn model(&self, model: &LLMType) -> Option<String> {
         match model {
             LLMType::ClaudeHaiku => Some("anthropic/claude-3-haiku".to_owned()),
-            LLMType::ClaudeSonnet => Some("anthropic/claude-3-sonnet".to_owned()),
+            LLMType::ClaudeSonnet => Some("anthropic/claude-3.5-sonnet:beta".to_owned()),
             LLMType::ClaudeOpus => Some("anthropic/claude-3-opus".to_owned()),
             LLMType::Gpt4 => Some("openai/gpt-4".to_owned()),
             LLMType::Gpt4O => Some("openai/gpt-4o".to_owned()),

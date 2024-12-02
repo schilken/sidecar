@@ -1464,8 +1464,8 @@ impl SearchTree {
                 self.children_indices(node)
                     .map(|child| child.len())
                     .unwrap_or_default(),
-                reward_str,
                 node.visits,
+                reward_str,
             );
         }
 

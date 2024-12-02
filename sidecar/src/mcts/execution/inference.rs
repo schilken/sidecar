@@ -171,11 +171,20 @@ impl InferenceEngine {
             false,
         );
 
+        let mut session_messages = messages
+            .into_iter()
+            .map(|message| SessionChatMessage::from_llm_message(message))
+            .collect::<Vec<_>>();
+
+        // add a reminder for the output format so it never forgets the thinking tag
+        session_messages.push(SessionChatMessage::user(
+            r"# Output format reminder:
+Always include the <thinking></thinking> section before using the tool.#"
+                .to_owned(),
+        ));
+
         let tool_agent_input = ToolUseAgentInput::new(
-            messages
-                .into_iter()
-                .map(|message| SessionChatMessage::from_llm_message(message))
-                .collect(),
+            session_messages,
             search_tree
                 .tools()
                 .into_iter()

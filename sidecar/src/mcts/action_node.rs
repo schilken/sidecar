@@ -856,7 +856,6 @@ impl SearchTree {
         let mut expandable_node_indices = vec![];
         let node = self.get_node(node_index);
         if let None = node {
-            println!("Node not found");
             return vec![];
         }
         let node = node.expect("if let None to hold");
@@ -865,7 +864,6 @@ impl SearchTree {
             && !self.is_node_fully_expanded(node_index)
             && !self.is_node_duplicate(node_index)
         {
-            println!("Node is expandable");
             expandable_node_indices.push(node_index);
         }
 
@@ -875,8 +873,6 @@ impl SearchTree {
             expandable_node_indices.extend(self.expandable_node(child_index));
         }
 
-        dbg!(&expandable_node_indices);
-
         expandable_node_indices
     }
 
@@ -885,9 +881,7 @@ impl SearchTree {
     /// This only allows nodes to be selected within the max_depth limit
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
-        println!("running_select");
         let expandable_nodes = self.expandable_node(self.root_node_index);
-        println!("expandable_nodes::({:?})", expandable_nodes);
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {
             let node = self.get_node(expandable_node_index);
@@ -901,14 +895,10 @@ impl SearchTree {
             }
         }
 
-        println!("filtered_nodes::({:?})", &filtered_nodes);
-
         if filtered_nodes.is_empty() {
             // so we're hitting this branch for first run, which causes us to break?
-            println!("No filtered nodes");
             return None;
         } else {
-            println!("Filtered nodes: {:?}", filtered_nodes);
             // find the selector
             let mut filtered_node_to_score = filtered_nodes
                 .into_iter()
@@ -926,7 +916,6 @@ impl SearchTree {
                     .total_cmp(&second_node.1.get_final_score())
             });
             filtered_node_to_score.reverse();
-            println!("Filtered node to score: {:?}", filtered_node_to_score);
             // this will never panic because the array is not empty
             Some(filtered_node_to_score[0].0)
         }
@@ -1253,28 +1242,21 @@ impl SearchTree {
     }
 
     pub async fn run_search(&mut self, message_properties: SymbolEventMessageProperties) {
-        println!("Running search");
         loop {
             if self.is_finished() {
-                println!("Search finished");
                 break;
             }
-
-            println!("running::select");
 
             // select the node for running search
             let selected_node = self.select();
             if let None = selected_node {
-                println!("No node selected");
                 break;
             }
             let selected_node = selected_node.expect("if let None to hold");
 
-            println!("running::expand");
             // expand the node
             let new_node = self.expand(selected_node);
             if let None = new_node {
-                println!("No new node");
                 break;
             }
             let new_node = new_node.expect("if let None to hold");

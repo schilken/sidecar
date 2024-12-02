@@ -15,7 +15,6 @@ jobs:
     defaults:
       run:
         shell: bash
-
     steps:
       - uses: actions/checkout@v2
 
@@ -38,15 +37,15 @@ jobs:
 
       # Now run the .sh script which does the building and packaging
       - name: Build and package
+        run: |
+          ./package_windows_bin.sh
+      - name: Release a new version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
-          SHOULD_BUILD: ${{ needs.check.outputs.SHOULD_BUILD }}
           FORCE_UPDATE: ${{ github.event.inputs.force_version }}
-          ARCH: "arm64" # ❓ is windows arm64 the same as linux arm64?
         run: |
-          ./package_windows_bin.sh
-
+          ./update_version.sh
       # This updates the environment variable
       - name: Set CLOUDSDK_PYTHON environment variable
         run: echo "CLOUDSDK_PYTHON=$(which python)" >> $GITHUB_ENV
@@ -62,13 +61,6 @@ jobs:
         uses: "google-github-actions/auth@v1"
         with:
           credentials_json: "${{ secrets.GCP_GAE_SA_KEY }}"
-
-      - name: Get version from Cargo.toml
-        id: get_version
-        run: |
-          VERSION=$(grep -m1 '^version = ' sidecar/Cargo.toml | cut -d '"' -f2)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
       - name: Upload to GCP bucket generated zip file
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -82,7 +74,7 @@ jobs:
           # Set your GCP project
           gcloud config set project ${{ env.GCP_PROJECT_ID }}
           # Copy the built binary to version-specific folder in GCP bucket
-          gsutil cp sidecar.zip "gs://sidecar-bin/windows/$VERSION/sidecar.zip"
+          gsutil cp sidecar.zip "gs://sidecar-bin/windows/$CARGO_PKG_VERSION/sidecar.zip"
           # Also update the latest version
           gsutil cp sidecar.zip "gs://sidecar-bin/windows/latest/sidecar.zip"
           # Remove the service account key file

@@ -1,18 +1,10 @@
 #!/bin/bash
 set -e
 
-# Check if the file exists and is readable
-if [ -f "$BINARY_VERSION_HASH" ]; then
-    # Include (source) the file
-    . "$BINARY_VERSION_HASH"
-else
-    echo "File not found: $BINARY_VERSION_HASH"
-fi
+cargo build --bin state
 
-if [[ "${SHOULD_BUILD}" != "yes" && "${FORCE_UPDATE}" != "true" ]]; then
-  echo "Will not update version JSON because we did not build"
-  exit 0
-fi
+export BINARY_VERSION_HASH=$(./target/debug/state)
+export CARGO_PKG_VERSION=$(grep -m1 '^version = ' sidecar/Cargo.toml | cut -d '"' -f2)
 
 if [[ -z "${GH_TOKEN}" ]] && [[ -z "${GITHUB_TOKEN}" ]] && [[ -z "${GH_ENTERPRISE_TOKEN}" ]] && [[ -z "${GITHUB_ENTERPRISE_TOKEN}" ]]; then
   echo "Will not update version JSON because no GITHUB_TOKEN defined"
@@ -23,17 +15,6 @@ fi
 
 # Support for GitHub Enterprise
 GH_HOST="${GH_HOST:-github.com}"
-
-if [[ "${FORCE_UPDATE}" == "true" ]]; then
-  . version.sh
-fi
-
-## is build_sourceversion necessary
-if [[ -z "${BUILD_SOURCEVERSION}" ]]; then
-  echo "Will not update version JSON because no BUILD_SOURCEVERSION defined"
-  exit 0
-fi
-
 REPOSITORY_NAME="${VERSIONS_REPOSITORY/*\//}"
 
 generateJson() {
@@ -45,7 +26,7 @@ generateJson() {
   timestamp=$( node -e 'console.log(Date.now())' )
 
   # check that nothing is blank (blank indicates something awry with build)
-  for key in package_version version_hash; do
+  for key in package_version version_hash timestamp; do
     if [[ -z "${key}" ]]; then
       echo "Variable '${key}' is empty; exiting..."
       exit 1
@@ -66,10 +47,10 @@ updateLatestVersion() {
 
   # do not update the same version
   if [[ -f "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json" ]]; then
-    CURRENT_VERSION=$( jq -r '.name' "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json" )
+    CURRENT_VERSION=$( jq -r '.package_version' "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json" )
     echo "CURRENT_VERSION: ${CURRENT_VERSION}"
 
-    if [[ "${CURRENT_VERSION}" == "${RELEASE_VERSION}" && "${FORCE_UPDATE}" != "true" ]]; then
+    if [[ "${CURRENT_VERSION}" == "${CARGO_PKG_VERSION}" && "${FORCE_UPDATE}" != "true" ]]; then
       return 0
     fi
   fi
@@ -80,8 +61,7 @@ updateLatestVersion() {
 
   generateJson
 
-  # prefixed with /extension – should update ide to have its own prefix
-  # and fetch the correct version
+  # prefixed with /extension to distinguish from ide
   echo "${JSON_DATA}" > "${REPOSITORY_NAME}/extension/${VERSION_PATH}/latest.json"
 
   echo "${JSON_DATA}"
@@ -97,51 +77,15 @@ git config user.name "${GITHUB_USERNAME} CI"
 git remote rm origin
 git remote add origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@${GH_HOST}/${VERSIONS_REPOSITORY}.git" &> /dev/null
 
-cd ../ # is this the right cd? ❓
 
-
-# ❓ assets?
-
-if [[ "${OS_NAME}" == "osx" ]]; then
-  # ASSET_NAME="${APP_NAME}-darwin-${ARCH}-${RELEASE_VERSION}.zip"
-  VERSION_PATH="${QUALITY}/darwin/${ARCH}"
+if [[ "${OS_NAME}" == "darwin" ]]; then
+  VERSION_PATH="${QUALITY}/darwin"
   updateLatestVersion
 elif [[ "${OS_NAME}" == "windows" ]]; then
-  # system installer
-  ASSET_NAME="${APP_NAME}Setup-${ARCH}-${RELEASE_VERSION}.exe"
-  VERSION_PATH="${QUALITY}/win32/${ARCH}/system"
+  VERSION_PATH="${QUALITY}/win32"
   updateLatestVersion
-
-  # user installer
-  ASSET_NAME="${APP_NAME}UserSetup-${ARCH}-${RELEASE_VERSION}.exe"
-  VERSION_PATH="${QUALITY}/win32/${ARCH}/user"
-  updateLatestVersion
-
-  # windows archive
-  ASSET_NAME="${APP_NAME}-win32-${ARCH}-${RELEASE_VERSION}.zip"
-  VERSION_PATH="${QUALITY}/win32/${ARCH}/archive"
-  updateLatestVersion
-
-  if [[ "${ARCH}" == "ia32" || "${ARCH}" == "x64" ]]; then
-
-    # ❓ assets?
-
-    # ❓ msi or non msi?
-    # ASSET_NAME="${APP_NAME}-${ARCH}-${RELEASE_VERSION}.msi"
-    VERSION_PATH="${QUALITY}/win32/${ARCH}/msi"
-    updateLatestVersion
-
-    # updates-disabled msi
-    ASSET_NAME="${APP_NAME}-${ARCH}-updates-disabled-${RELEASE_VERSION}.msi"
-    VERSION_PATH="${QUALITY}/win32/${ARCH}/msi-updates-disabled"
-    updateLatestVersion
-  fi
 else # linux
-  # update service links to tar.gz file
-  # see https://update.code.visualstudio.com/api/update/linux-x64/stable/VERSION
-  # as examples
-  ASSET_NAME="${APP_NAME}-linux-${ARCH}-${RELEASE_VERSION}.tar.gz"
-  VERSION_PATH="${QUALITY}/linux/${ARCH}"
+  VERSION_PATH="${QUALITY}/linux"
   updateLatestVersion
 fi
 
@@ -167,4 +111,4 @@ else
   echo "No changes"
 fi
 
-# cd .. is this important?
+cd ..

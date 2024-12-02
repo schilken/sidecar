@@ -7,7 +7,6 @@ env:
   APP_NAME: sidecar
   OS_NAME: linux
   VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
-  BUILD_SOURCEVERSION: ${{ needs.compile.outputs.BUILD_SOURCEVERSION }}
   QUALITY: stable
 
 jobs:
@@ -41,21 +40,15 @@ jobs:
 
       # Now run the .sh script which does the building and packaging
       - name: Build and package
+        run: |
+          ./package.sh
+      - name: Release a new version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_USERNAME: ${{ github.repository_owner }}
-          SHOULD_BUILD: ${{ needs.check.outputs.SHOULD_BUILD }} # ❓ needs?
           FORCE_UPDATE: ${{ github.event.inputs.force_version }}
-          ARCH: "arm64"
         run: |
-          ./package.sh
-
-      - name: Get version from Cargo.toml
-        id: get_version
-        run: |
-          VERSION=$(grep -m1 '^version = ' sidecar/Cargo.toml | cut -d '"' -f2)
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-
+          ./update_version.sh
       - name: Upload to GCP bucket generated zip file
         env:
           GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -69,7 +62,7 @@ jobs:
           # Set your GCP project
           gcloud config set project $GCP_PROJECT_ID
           # Copy the built binary to version-specific folder in GCP bucket
-          gsutil cp sidecar.zip gs://sidecar-bin/linux/$VERSION/sidecar_64.zip
+          gsutil cp sidecar.zip gs://sidecar-bin/linux/$CARGO_PKG_VERSION/sidecar_64.zip
           # Also update the latest version
           gsutil cp sidecar.zip gs://sidecar-bin/linux/latest/sidecar_64.zip
           # Remove the service account key file

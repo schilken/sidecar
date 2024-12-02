@@ -1443,13 +1443,14 @@ impl SearchTree {
         } else {
             // Print the current node with prefix and branch symbols
             println!(
-                "{}{} Node {} (v:{}, val:{:.2}, r:{}) {}",
+                "{}{} Node {} (visit:{}, val:{:.2}, r:{}, duplicate:{}) {}",
                 prefix,
                 if is_last { "└──" } else { "├──" },
                 node_index,
                 visits,
                 value,
                 reward,
+                node.is_duplicate,
                 action_str
             );
         }

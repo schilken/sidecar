@@ -1400,39 +1400,80 @@ impl SearchTree {
     }
 
     fn print_tree(&self) {
-        println!("\nCurrent Tree State:");
-        self.print_node(self.root_node_index, "");
-        println!(); // Extra line for readability
+        println!("MCTS Tree");
+        self.print_node(self.root_node_index, "", true);
     }
 
-    fn print_node(&self, node_index: usize, prefix: &str) {
+    fn print_node(&self, node_index: usize, prefix: &str, is_last: bool) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
             None => return,
         };
 
-        // Format node information
-        let action_str = match &node.action {
-            Some(ActionToolParameters::Errored(err)) => format!("Error: {}", err),
-            Some(ActionToolParameters::Tool(tool)) => format!("Tool: {}", tool.to_tool_type()),
-            None => String::from("(No Action)"),
+        // Build state parameters
+        let mut state_params = Vec::new();
+        if let Some(action) = &node.action {
+            match action {
+                ActionToolParameters::Errored(err) => state_params.push(format!("Error: {}", err)),
+                ActionToolParameters::Tool(tool) => {
+                    state_params.push(format!("{}", tool.to_tool_type()))
+                }
+            }
+
+            if let Some(observation) = &node.observation {
+                if observation.expect_correction {
+                    state_params.push("expect_correction".to_string());
+                }
+            }
+        }
+
+        // Construct state_info
+        let state_info = if !state_params.is_empty() {
+            format!("Node{}({})", node_index, state_params.join(", "))
+        } else {
+            format!("Node{}()", node_index)
         };
 
+        // Construct node_str based on reward
+        let node_str = if let Some(reward) = &node.reward {
+            format!("Node{} [{}]", node_index, reward.value())
+        } else {
+            format!("Node{} [-]", node_index)
+        };
+
+        // Reward string
+        let reward_str = if let Some(reward) = &node.reward {
+            format!("{}", reward.value())
+        } else {
+            "0".to_string()
+        };
+
+        // Decide which branch to draw
+        let branch = if is_last { "└── " } else { "├── " };
+
         // Print the current node
-        println!(
-            "{}Node {} (v:{}, val:{:.2}, r:{}) {} {}",
-            prefix,
-            node_index,
-            node.visits,
-            node.reward_value,
-            node.reward.as_ref().map_or(0, |r| r.value()),
-            action_str,
-            if node.is_duplicate {
-                " (duplicate)"
-            } else {
-                ""
-            }
-        );
+        if node.is_duplicate {
+            println!(
+                "{}{}{} {} (duplicate)",
+                prefix, branch, node_str, state_info
+            );
+        } else {
+            println!(
+                "{}{}{} {} (expansions: {}, reward: {}, visits: {})",
+                prefix,
+                branch,
+                node_str,
+                state_info,
+                self.children_indices(node)
+                    .map(|child| child.len())
+                    .unwrap_or_default(),
+                reward_str,
+                node.visits,
+            );
+        }
+
+        // Prepare prefix for child nodes
+        let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
 
         // Get children of the current node
         let children = self
@@ -1441,12 +1482,12 @@ impl SearchTree {
             .cloned()
             .unwrap_or_default();
 
-        // this is the vertical bar that drops from the parent node
-        let children_prefix = format!("{}{}", prefix, "│   ");
+        let child_count = children.len();
 
-        // Print all children
-        for (_i, child_index) in children.iter().enumerate() {
-            self.print_node(*child_index, &children_prefix);
+        // Recursively print each child node
+        for (i, child_index) in children.iter().enumerate() {
+            let is_last_child = i == child_count - 1;
+            self.print_node(*child_index, &new_prefix, is_last_child);
         }
     }
 

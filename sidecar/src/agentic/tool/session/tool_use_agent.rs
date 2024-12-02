@@ -708,6 +708,8 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                         exchange_id.to_owned(),
                         tool_found,
                     ));
+                }
+                ToolBlockEvent::ToolWithParametersFound => {
                     // cancel the token once we have a tool
                     tool_found_token.cancel();
                     // If we have found a tool we should break hard over here
@@ -777,6 +779,7 @@ pub struct ToolParameters {
 enum ToolBlockEvent {
     ThinkingFull(String),
     ToolFound(ToolType),
+    ToolWithParametersFound,
     ToolParameters(ToolParameters),
     // contains the full string of the step output since we failed to find any event
     NoToolFound(String),
@@ -985,6 +988,7 @@ impl ToolUseGenerator {
                                             self.file_pattern.clone(),
                                         ),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -996,6 +1000,7 @@ impl ToolUseGenerator {
                                 self.tool_input_partial = Some(ToolInputPartial::CodeEditing(
                                     CodeEditingPartialRequest::new(fs_file_path, instruction),
                                 ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1006,7 +1011,8 @@ impl ToolUseGenerator {
                             (Some(directory_path), Some(recursive)) => {
                                 self.tool_input_partial = Some(ToolInputPartial::ListFiles(
                                     ListFilesInput::new(directory_path, recursive),
-                                ))
+                                ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1018,6 +1024,7 @@ impl ToolUseGenerator {
                                 self.tool_input_partial = Some(ToolInputPartial::OpenFile(
                                     OpenFileRequestPartial::new(fs_file_path),
                                 ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1027,6 +1034,7 @@ impl ToolUseGenerator {
                         self.tool_input_partial = Some(ToolInputPartial::LSPDiagnostics(
                             WorkspaceDiagnosticsPartial::new(),
                         ));
+                        let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                         self.tool_type_possible = None;
                     } else if answer_line_at_index == "</execute_command>" {
                         self.tool_block_status = ToolBlockStatus::NoBlock;
@@ -1034,7 +1042,8 @@ impl ToolUseGenerator {
                             Some(command) => {
                                 self.tool_input_partial = Some(ToolInputPartial::TerminalCommand(
                                     TerminalInputPartial::new(command.to_owned()),
-                                ))
+                                ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1050,6 +1059,7 @@ impl ToolUseGenerator {
                                             self.command.clone(),
                                         ),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1062,6 +1072,7 @@ impl ToolUseGenerator {
                                     Some(ToolInputPartial::AskFollowupQuestions(
                                         AskFollowupQuestionsRequest::new(question),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1074,6 +1085,7 @@ impl ToolUseGenerator {
                                     Some(ToolInputPartial::RepoMapGeneration(
                                         RepoMapGeneratorRequestPartial::new(directory_path),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1085,6 +1097,7 @@ impl ToolUseGenerator {
                             Some(fs_file_paths) => {
                                 self.tool_input_partial =
                                     Some(ToolInputPartial::TestRunner(fs_file_paths));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }

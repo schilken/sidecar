@@ -1,6 +1,7 @@
-use crate::state::BINARY_VERSION_HASH;
+use sidecar::state::BINARY_VERSION_HASH;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let binary_version = BINARY_VERSION_HASH;
     println!("{}", binary_version);
 }

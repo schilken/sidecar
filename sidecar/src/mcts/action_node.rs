@@ -818,6 +818,71 @@ impl SearchTree {
         return 0.0;
     }
 
+    pub fn calculate_duplicate_action_penalty(
+        &self,
+        node_index: usize,
+        duplicate_action_penalty_constant: f32,
+    ) -> f32 {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return 0.0;
+        }
+        let node = node.expect("if let None to hold");
+        let children: Vec<_> = self
+            .children(node)
+            .map(|children| children.collect())
+            .unwrap_or_default();
+
+        // how many times have we performed an action
+        let mut action_times: HashMap<ToolType, usize> = Default::default();
+        children.into_iter().for_each(|child| {
+            let child_tool_type = child.action().map(|action| action.to_tool_type()).flatten();
+            if let Some(tool_type) = child_tool_type {
+                if let Some(action_times_taken) = action_times.get_mut(&tool_type) {
+                    *action_times_taken = *action_times_taken + 1;
+                } else {
+                    action_times.insert(tool_type, 1);
+                }
+            }
+        });
+
+        let mut penalty = 0.0;
+        action_times.values().for_each(|action_taken_times| {
+            if *action_taken_times > 0 {
+                penalty = penalty
+                    + (action_taken_times - 1).pow(2) as f32 * duplicate_action_penalty_constant
+            }
+        });
+
+        penalty
+    }
+
+    pub fn calculate_duplicate_child_penalty(
+        &self,
+        node_index: usize,
+        duplicate_child_penalty_constant: f32,
+    ) -> f32 {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return 0.0;
+        }
+        let node = node.expect("if let None to work");
+        let children: Vec<_> = self
+            .children(node)
+            .map(|children| children.collect())
+            .unwrap_or_default();
+        let duplicate_children = children
+            .into_iter()
+            .filter(|children| children.is_duplicate())
+            .collect::<Vec<_>>()
+            .len();
+        if duplicate_children > 0 {
+            duplicate_child_penalty_constant * (duplicate_children.pow(2) as f32)
+        } else {
+            0.0
+        }
+    }
+
     /// How many times was the node visited
     pub fn node_visits(&self, node_index: usize) -> f32 {
         let node = self.get_node(node_index);
@@ -999,15 +1064,15 @@ impl SearchTree {
         }
     }
 
+    /// is_duplicate checks the siblings to make sure that this is not a duplicate node
     pub fn is_duplicate(
         &self,
         current_node: &ActionNode,
         action_to_take: &ActionToolParameters,
     ) -> bool {
-        let mut trajectory = self.trajectory(current_node.index);
-        let root_to_leaf_direction = trajectory.split_off(trajectory.len() - 1);
-        let is_duplicate = root_to_leaf_direction.into_iter().any(|node| {
-            if let Some(action) = node.action() {
+        let siblings = self.get_sibling_nodes(current_node.index);
+        let is_duplicate = siblings.into_iter().any(|sibling| {
+            if let Some(action) = sibling.action() {
                 match (action, action_to_take) {
                     (
                         ActionToolParameters::Errored(first_error),
@@ -1033,6 +1098,7 @@ impl SearchTree {
                 false
             }
         });
+
         is_duplicate
     }
 

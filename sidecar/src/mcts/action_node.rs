@@ -1402,6 +1402,12 @@ impl SearchTree {
         }
     }
 
+    fn print_tree(&self) {
+        println!("\nCurrent Tree State:");
+        self.print_node(self.root_node_index, "");
+        println!(); // Extra line for readability
+    }
+
     fn print_node(&self, node_index: usize, prefix: &str) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
@@ -1442,15 +1448,9 @@ impl SearchTree {
         let children_prefix = format!("{}{}", prefix, "│   ");
 
         // Print all children
-        for (i, child_index) in children.iter().enumerate() {
+        for (_i, child_index) in children.iter().enumerate() {
             self.print_node(*child_index, &children_prefix);
         }
-    }
-
-    fn print_tree(&self) {
-        println!("\nCurrent Tree State:");
-        self.print_node(self.root_node_index, "");
-        println!(); // Extra line for readability
     }
 
     // Add this helper method for logging node_to_children

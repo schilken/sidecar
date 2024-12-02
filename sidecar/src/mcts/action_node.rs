@@ -1093,7 +1093,8 @@ impl SearchTree {
                         } else {
                             // now we can compare the tool input parameters
                             // since they do not have the thinking over here
-                            first_tool_type.to_string() == second_tool_type.to_string()
+                            first_tool_input_parameters.to_string()
+                                == second_tool_input_parameters.to_string()
                         }
                     }
                     _ => false,

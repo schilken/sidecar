@@ -1,6 +1,9 @@
 # We are going to use this script to package up the binary as there are
 # certain things we have to copy at the right place for this binary to work.
 
+# ❓ do we always want to update the version when packaging with this shell script?
+cargo bump ${VERSION_BUMP:-patch}
+
 # - we need to have the ort runtime checked in, along with the model which is
 # required.
 # - and we also pass the dydlib library as well

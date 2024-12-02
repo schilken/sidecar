@@ -13,6 +13,8 @@ use super::types::{RepoRef, Repository};
 
 pub type RepositoryPool = Arc<scc::HashMap<RepoRef, Repository>>;
 
+// ❓ can't understand where this comes from
+
 include!(concat!(env!("OUT_DIR"), "/version_hash.rs"));
 
 #[derive(thiserror::Error, Debug)]

@@ -20,12 +20,20 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
+#[derive(Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+pub enum ActionObservationMetadataKey {
+    FileContentUpdated(String),
+}
+
 #[derive(Clone)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
+    /// The metadata here contains extra information about the action which have been
+    /// performed and any trace information which we want to keep
+    metadata: HashMap<ActionObservationMetadataKey, String>,
 }
 
 impl ActionObservation {
@@ -35,6 +43,7 @@ impl ActionObservation {
             summary: None,
             terminal,
             expect_correction,
+            metadata: Default::default(),
         }
     }
 
@@ -44,7 +53,29 @@ impl ActionObservation {
             summary: Some(summary),
             terminal,
             expect_correction: false,
+            metadata: Default::default(),
         }
+    }
+
+    pub fn file_content_updated(mut self, fs_file_path: String, file_content: String) -> Self {
+        self.metadata.insert(
+            ActionObservationMetadataKey::FileContentUpdated(fs_file_path),
+            file_content,
+        );
+        self
+    }
+
+    pub fn get_updated_file_content(&self) -> HashMap<String, String> {
+        self.metadata
+            .iter()
+            .filter_map(|(key, value)| {
+                if let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key {
+                    Some((fs_file_path.to_owned(), value.to_owned()))
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
@@ -99,6 +130,7 @@ impl ActionToolParameters {
 pub struct ActionNode {
     index: usize,
     action: Option<ActionToolParameters>,
+    /// The tree dictates the control vector for the node
     feedback: Option<String>,
     is_duplicate: bool,
     reward: Option<Reward>,
@@ -1020,6 +1052,17 @@ impl SearchTree {
         node.is_duplicate = is_duplicate;
         node.action = Some(action_tool_parameters);
         node.observation = action_observation;
+        // update the node content over here
+        if let Some(observation) = node.observation() {
+            let updated_file_content = observation.get_updated_file_content();
+            updated_file_content
+                .into_iter()
+                .for_each(|(fs_file_path, updated_file_content)| {
+                    // now we update the file content present in the user context
+                    node.user_context
+                        .update_file_content(&fs_file_path, &updated_file_content);
+                })
+        }
     }
 
     pub async fn run_node(

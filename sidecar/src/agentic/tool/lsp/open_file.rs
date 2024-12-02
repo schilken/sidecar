@@ -75,6 +75,10 @@ impl OpenFileResponse {
 </content>"#
         )
     }
+
+    pub fn to_content(&self) -> String {
+        self.file_contents.to_owned()
+    }
 }
 
 impl OpenFileResponse {

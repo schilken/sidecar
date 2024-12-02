@@ -542,13 +542,12 @@ This is part of the file which might not contain the method in full, if thats th
                     .await
                     .map_err(|e| InferenceError::ToolError(e))?
                     .get_file_open_response()
-                    .ok_or(InferenceError::WrongToolOutput)?
-                    .to_string();
+                    .ok_or(InferenceError::WrongToolOutput)?;
                 Ok(ActionObservation::new(
                     format!(
                         r#"Here's the content of the file which you wanted to see
 {}"#,
-                        &response
+                        &response.to_string()
                     ),
                     format!(
                         "Showed the content of the following file {}",
@@ -556,7 +555,7 @@ This is part of the file which might not contain the method in full, if thats th
                     ),
                     false,
                 )
-                .file_content_updated(open_file_path.to_owned(), response))
+                .file_content_updated(open_file_path.to_owned(), response.to_content()))
             }
             ToolInputPartial::RepoMapGeneration(repo_map_request) => {
                 let directory_path = repo_map_request.directory_path().to_owned();

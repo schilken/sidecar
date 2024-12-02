@@ -15,7 +15,7 @@ use crate::{
 use super::error::RewardError;
 
 /// The reward for execution on an action node and the value generated out of it
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Reward {
     /// An explanation and the reasoning behind your decision.
     explanation: String,
@@ -75,12 +75,12 @@ impl RewardGeneration {
             return Err(RewardError::EmptyTrajectory);
         }
 
-        let root_to_leaf_direction = nodes_trajectory.split_off(nodes_trajectory.len() - 1);
         let leaf = nodes_trajectory.pop();
         if leaf.is_none() {
             return Err(RewardError::EmptyTrajectory);
         }
         let leaf = leaf.expect("is_none to hold");
+        let root_to_leaf_direction = nodes_trajectory;
 
         if let Some(observation) = leaf.observation() {
             // we require a correction, no reward

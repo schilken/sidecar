@@ -142,6 +142,7 @@ impl VariableInformation {
         self
     }
 
+    // TODO(skcd): https://gist.github.com/sartoshi-foot-dao/5c06750e3ac5761dc3d1132b5af1833b
     pub fn base_content(&self) -> String {
         if let Some(initial_patch) = self.initial_patch.as_ref() {
             println!("content: {}", self.content);

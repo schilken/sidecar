@@ -1358,11 +1358,9 @@ impl SearchTree {
 
             // Reset and prepare node
             self.reset_file_system(new_index).await;
-            println!("Reset filesystem for node {}", new_index);
 
             self.generate_feedback_for_node(new_index, message_properties.clone())
                 .await;
-            println!("Generated feedback for node {}", new_index);
 
             // Simulation
             self.run_node(new_index, message_properties.clone()).await;
@@ -1370,7 +1368,6 @@ impl SearchTree {
 
             // Backpropagation
             self.backpropogate(new_index);
-            println!("Completed backpropagation from node {}", new_index);
 
             // Log tree statistics
             println!(

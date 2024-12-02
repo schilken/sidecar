@@ -1380,7 +1380,7 @@ impl SearchTree {
         let node = self.get_node(node_index).unwrap();
         let depth = self.get_depth(node_index);
         let visits = node.visits;
-        let reward = node.reward.as_ref().map(|r| r.value()).unwrap_or(-1);
+        let reward = node.reward_value;
 
         println!(
             "{prefix} [Node {}] Depth: {}, Visits: {}, Reward: {}",

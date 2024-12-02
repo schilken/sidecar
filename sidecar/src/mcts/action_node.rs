@@ -1258,6 +1258,9 @@ impl SearchTree {
             iteration += 1;
             println!("\n--- Iteration {} ---", iteration);
 
+            // Add tree visualization after each iteration
+            self.print_tree();
+
             if self.is_finished() {
                 println!("Search finished - termination condition met");
                 break;
@@ -1307,6 +1310,8 @@ impl SearchTree {
             );
         }
         println!("=== Search Complete ===\n");
+        // Print final tree state
+        self.print_tree();
     }
 
     // Add this helper method for logging tree state
@@ -1324,6 +1329,62 @@ impl SearchTree {
         // Log action if present
         if let Some(action) = &node.action {
             println!("{prefix}   Action: {}", action.to_string());
+        }
+    }
+
+    fn print_tree(&self) {
+        println!("\nCurrent Tree State:");
+        self.print_node(self.root_node_index, 0, "");
+        println!(); // Extra line for readability
+    }
+
+    fn print_node(&self, node_index: usize, depth: usize, prefix: &str) {
+        let node = match self.get_node(node_index) {
+            Some(n) => n,
+            None => return,
+        };
+
+        // Prepare the node information
+        let visits = node.visits;
+        let value = node.value;
+        let reward = node.reward.as_ref().map_or(-1, |r| r.value());
+
+        // Create the action display string
+        let action_str = node
+            .action
+            .as_ref()
+            .map_or("(No Action)".to_string(), |a| match a {
+                ActionToolParameters::Tool(t) => format!("Tool: {}", t.to_tool_type().to_string()),
+                ActionToolParameters::Errored(e) => {
+                    let error_msg = e
+                        .lines()
+                        .next()
+                        .unwrap_or(e)
+                        .chars()
+                        .take(30)
+                        .collect::<String>();
+                    format!("Error: {}", error_msg)
+                }
+            });
+
+        // Print the current node
+        println!(
+            "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
+            "  ".repeat(depth),
+            prefix,
+            node_index,
+            visits,
+            value,
+            reward,
+            action_str
+        );
+
+        // Print all children
+        if let Some(children) = self.node_to_children.get(&node_index) {
+            for (i, child_index) in children.iter().enumerate() {
+                let new_prefix = if i == children.len() - 1 { "" } else { "│ " };
+                self.print_node(*child_index, depth + 1, new_prefix);
+            }
         }
     }
 }

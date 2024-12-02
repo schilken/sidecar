@@ -885,6 +885,10 @@ impl SearchTree {
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
         let expandable_nodes = self.expandable_node(self.root_node_index);
+        println!(
+            "Selection phase - {} expandable nodes",
+            expandable_nodes.len()
+        );
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {
             let node = self.get_node(expandable_node_index);
@@ -1075,6 +1079,7 @@ impl SearchTree {
         node_index: usize,
         message_properties: SymbolEventMessageProperties,
     ) {
+        println!("Simulating node {}", node_index);
         {
             let node = self.get_node_mut(node_index);
             if let None = node {
@@ -1106,12 +1111,12 @@ impl SearchTree {
 
         // - generate the value reward
         match inference_result {
-            Err(_e) => {
+            Err(e) => {
+                println!("Node {} simulation failed: {}", node_index, e);
                 return;
             }
-            // - update the node
-            // - generate the reward for this node
             Ok(inference_result) => {
+                println!("Node {} simulation complete", node_index);
                 let action_observation = inference_result.action_observation();
                 let observation_present = action_observation.is_some();
                 let action_tool_parameters = inference_result.action_tool_parameters();
@@ -1149,6 +1154,7 @@ impl SearchTree {
     }
 
     pub fn backpropogate(&mut self, node_index: usize) {
+        println!("Starting backpropagation from node {}", node_index);
         let node_reward = self
             .get_node(node_index)
             .map(|node| node.reward().cloned())
@@ -1245,38 +1251,79 @@ impl SearchTree {
     }
 
     pub async fn run_search(&mut self, message_properties: SymbolEventMessageProperties) {
+        println!("\n=== Starting MCTS Search ===");
+        let mut iteration = 0;
+
         loop {
+            iteration += 1;
+            println!("\n--- Iteration {} ---", iteration);
+
             if self.is_finished() {
+                println!("Search finished - termination condition met");
                 break;
             }
 
-            // select the node for running search
+            // Selection phase
             let selected_node = self.select();
-            if let None = selected_node {
+            if let Some(selected_index) = selected_node {
+                self.log_tree_state(selected_index, "Selected:");
+            } else {
+                println!("No node selected - terminating search");
                 break;
             }
-            let selected_node = selected_node.expect("if let None to hold");
 
-            // expand the node
-            let new_node = self.expand(selected_node);
-            if let None = new_node {
+            // Expansion phase
+            let new_node = selected_node.and_then(|n| self.expand(n));
+            if let Some(new_index) = new_node {
+                self.log_tree_state(new_index, "Expanded:");
+            } else {
+                println!("No expansion possible - terminating search");
                 break;
             }
-            let new_node = new_node.expect("if let None to hold");
-            // reset the file system
-            self.reset_file_system(new_node).await;
-            // generate feedback for the new node
-            self.generate_feedback_for_node(new_node, message_properties.clone())
+
+            let new_index = new_node.expect("Already checked above");
+
+            // Reset and prepare node
+            self.reset_file_system(new_index).await;
+            println!("Reset filesystem for node {}", new_index);
+
+            self.generate_feedback_for_node(new_index, message_properties.clone())
                 .await;
-            println!("Generated feedback for new node");
-            // run the node
-            self.run_node(new_node, message_properties.clone()).await;
-            println!("Ran node");
-            // back-propogate
-            self.backpropogate(new_node);
-            println!("Back-propogated");
-        }
+            println!("Generated feedback for node {}", new_index);
 
-        // over here we try to get the best trajectory
+            // Simulation
+            self.run_node(new_index, message_properties.clone()).await;
+            self.log_tree_state(new_index, "After simulation:");
+
+            // Backpropagation
+            self.backpropogate(new_index);
+            println!("Completed backpropagation from node {}", new_index);
+
+            // Log tree statistics
+            println!(
+                "Tree state: {} total nodes, {} expandable",
+                self.index_to_node.len(),
+                self.expandable_node(self.root_node_index).len()
+            );
+        }
+        println!("=== Search Complete ===\n");
+    }
+
+    // Add this helper method for logging tree state
+    fn log_tree_state(&self, node_index: usize, prefix: &str) {
+        let node = self.get_node(node_index).unwrap();
+        let depth = self.get_depth(node_index);
+        let visits = node.visits;
+        let reward = node.reward.as_ref().map(|r| r.value()).unwrap_or(-1);
+
+        println!(
+            "{prefix} [Node {}] Depth: {}, Visits: {}, Reward: {}",
+            node_index, depth, visits, reward
+        );
+
+        // Log action if present
+        if let Some(action) = &node.action {
+            println!("{prefix}   Action: {}", action.to_string());
+        }
     }
 }

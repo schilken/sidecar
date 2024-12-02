@@ -21,12 +21,12 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
-#[derive(Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+#[derive(Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
 pub enum ActionObservationMetadataKey {
     FileContentUpdated(String),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
@@ -94,7 +94,7 @@ impl ActionObservation {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ActionToolParameters {
     Errored(String),
     Tool(ToolInputPartial),
@@ -128,6 +128,7 @@ impl ActionToolParameters {
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
+#[derive(Debug)]
 pub struct ActionNode {
     index: usize,
     action: Option<ActionToolParameters>,

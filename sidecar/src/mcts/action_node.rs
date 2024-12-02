@@ -1429,16 +1429,16 @@ impl SearchTree {
 
         // Construct state_info
         let state_info = if !state_params.is_empty() {
-            format!("Node{}({})", node_index, state_params.join(", "))
+            format!("Node {} ({})", node_index, state_params.join(", "))
         } else {
-            format!("Node{}()", node_index)
+            format!("Node {} ()", node_index)
         };
 
         // Construct node_str based on reward
         let node_str = if let Some(reward) = &node.reward {
-            format!("Node{} [{}]", node_index, reward.value())
+            format!("[{}]", reward.value())
         } else {
-            format!("Node{} [-]", node_index)
+            format!("[-]")
         };
 
         // Reward string
@@ -1453,13 +1453,10 @@ impl SearchTree {
 
         // Print the current node
         if node.is_duplicate {
-            println!(
-                "{}{}{} {} (duplicate)",
-                prefix, branch, node_str, state_info
-            );
+            println!("{}{}{} {} (dup)", prefix, branch, node_str, state_info);
         } else {
             println!(
-                "{}{}{} {} (expansions: {}, reward: {}, visits: {})",
+                "{}{}{} {} (ex: {}, vi: {}, re: {})",
                 prefix,
                 branch,
                 node_str,

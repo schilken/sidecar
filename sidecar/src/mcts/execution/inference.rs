@@ -82,8 +82,6 @@ impl InferenceEngine {
             return Err(InferenceError::EmptyTrajectory);
         }
 
-        println!("nodes_trajectory::({:?})", &nodes_trajectory);
-
         let leaf = nodes_trajectory.pop();
         if leaf.is_none() {
             return Err(InferenceError::EmptyTrajectory);
@@ -153,8 +151,6 @@ impl InferenceEngine {
         if let Some(feedback) = leaf.feedback() {
             message_history.push(LLMClientMessage::user(feedback));
         }
-
-        println!("message_history::({:?})", &message_history);
 
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
         let execution_and_observe = self

@@ -1400,11 +1400,11 @@ impl SearchTree {
 
     fn print_tree(&self) {
         println!("\nCurrent Tree State:");
-        self.print_node(self.root_node_index, 0, "");
+        self.print_node(self.root_node_index, 0, "", true);
         println!(); // Extra line for readability
     }
 
-    fn print_node(&self, node_index: usize, depth: usize, prefix: &str) {
+    fn print_node(&self, node_index: usize, depth: usize, prefix: &str, is_root: bool) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
             None => return,
@@ -1434,22 +1434,29 @@ impl SearchTree {
             });
 
         // Print the current node
-        println!(
-            "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
-            "  ".repeat(depth),
-            prefix,
-            node_index,
-            visits,
-            value,
-            reward,
-            action_str
-        );
+        if is_root {
+            println!(
+                "Root {} (v:{}, val:{:.2}, r:{}) {}",
+                node_index, visits, value, reward, action_str
+            );
+        } else {
+            println!(
+                "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
+                "  ".repeat(depth),
+                prefix,
+                node_index,
+                visits,
+                value,
+                reward,
+                action_str
+            );
+        }
 
         // Print all children
         if let Some(children) = self.node_to_children.get(&node_index) {
             for (i, child_index) in children.iter().enumerate() {
                 let new_prefix = if i == children.len() - 1 { "" } else { "│ " };
-                self.print_node(*child_index, depth + 1, new_prefix);
+                self.print_node(*child_index, depth + 1, new_prefix, false);
             }
         }
     }

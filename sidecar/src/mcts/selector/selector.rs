@@ -243,6 +243,24 @@ impl Selector {
         graph.calculate_expect_correction_bonus(node_index, self.expect_correction_bonus)
     }
 
+    /// Calculate penalty for nodes that have children with duplicate action names.
+    /// The penalty increases with each duplicate action.
+    ///
+    /// Purpose: Discourages selecting nodes whose children perform the same type of action
+    /// multiple times, promoting more diverse action sequences.
+    pub fn calculate_duplicate_action_penalty(&self, node_index: usize, graph: &SearchTree) -> f32 {
+        graph.calculate_duplicate_action_penalty(node_index, self.duplicate_action_penalty_constant)
+    }
+
+    /// Calculate penalty for nodes that have duplicate children.
+    /// The penalty increases with each duplicate child.
+    ///
+    /// Purpose: Discourages exploration of nodes that tend to generate duplicate states,
+    /// as these are likely to be less productive paths in the search space.
+    pub fn calculate_duplicate_child_penalty(&self, node_index: usize, graph: &SearchTree) -> f32 {
+        graph.calculate_duplicate_child_penalty(node_index, self.duplicate_child_penalty_constant)
+    }
+
     /// Compute the UCT score with additional bonuses and penalties based on node characteristics.
     ///
     /// This method combines various components to create a comprehensive score for node selection,
@@ -266,8 +284,8 @@ impl Selector {
         let expect_correction_bonus = self.calculate_expect_correction_bonus(node_index, graph);
         // TODO(skcd): We have to update the diversity score over here
         let diversity_bonus = 0.0;
-        let duplicate_child_penalty = 0.0;
-        let duplicate_action_penalty = 0.0;
+        let duplicate_child_penalty = self.calculate_duplicate_child_penalty(node_index, graph);
+        let duplicate_action_penalty = self.calculate_duplicate_action_penalty(node_index, graph);
         let final_score = exploitation + exploration + depth_bonus - depth_penalty
             + high_value_leaf_node
             + high_value_bad_children_bonus

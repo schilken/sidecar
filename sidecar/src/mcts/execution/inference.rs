@@ -116,16 +116,6 @@ impl InferenceEngine {
         // message history
         let mut message_history = vec![];
 
-        // this implies that we are at the root-node since the root_to_leaf should be
-        // empty for that case
-        // println!("root_to_leaf_directory::({:?})", &root_to_leaf_direction);
-        // println!("leaf_node::({:?})", leaf);
-        // if root_to_leaf_direction.is_empty() {
-        //     if let Some(message) = leaf.message() {
-        //         message_history.push(LLMClientMessage::user(message));
-        //     }
-        // }
-
         // Now create the messages for the previous nodes which we have
         for (_index, current_node) in root_to_leaf_direction.iter().enumerate() {
             if let Some(message) = current_node.message() {
@@ -137,11 +127,10 @@ impl InferenceEngine {
             }
 
             if let Some(observation) = current_node.observation() {
-                if let Some(summary) = observation.summary() {
-                    message_history.push(LLMClientMessage::user(summary.to_owned()));
-                } else {
-                    message_history.push(LLMClientMessage::user(observation.message().to_owned()));
-                }
+                // always give the full observation message and not just the summary
+                // since we will be generating new actions and they might be based
+                // on the read_file output or the code_edit output
+                message_history.push(LLMClientMessage::user(observation.message().to_owned()));
             }
         }
 

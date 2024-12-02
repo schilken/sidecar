@@ -2137,6 +2137,7 @@ The Github Issue we are trying to solve is:
         tool_agent: ToolUseAgent,
         original_user_message: String,
         is_test_generation: bool,
+        is_swe_bench: bool,
         mut message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
         // we want to send a new event only when we are not going to ask for the followup questions
@@ -2260,6 +2261,9 @@ The Github Issue we are trying to solve is:
                 // on individual chunks instead
                 let updated_code = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
                     >= 1300
+                    // if we are not in swe_bench mode, never try to be extra, go with
+                    // the standard search and replace flow
+                    && !is_swe_bench
                 {
                     let first_part_lines = file_contents
                         .to_owned()

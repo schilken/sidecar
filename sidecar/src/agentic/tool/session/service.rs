@@ -466,6 +466,7 @@ impl SessionService {
                             tool_agent.clone(),
                             user_message.to_owned(),
                             true,
+                            true,
                             message_properties.clone(),
                         )
                         .await;
@@ -636,6 +637,7 @@ impl SessionService {
                             tool_agent.clone(),
                             user_message.to_owned(),
                             false,
+                            true,
                             message_properties.clone(),
                         )
                         .await;
@@ -798,6 +800,7 @@ impl SessionService {
                             tool_agent.clone(),
                             user_message.to_owned(),
                             false, // is not part of test genertaion
+                            false,
                             message_properties.clone(),
                         )
                         .await?;

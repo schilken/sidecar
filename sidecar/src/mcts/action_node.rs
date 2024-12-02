@@ -1413,7 +1413,7 @@ impl SearchTree {
         // Prepare the node information
         let visits = node.visits;
         let value = node.value;
-        let reward = node.reward.as_ref().map_or(-1, |r| r.value());
+        let reward = node.reward_value;
 
         // Create the action display string
         let action_str = node

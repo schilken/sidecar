@@ -1327,6 +1327,9 @@ impl SearchTree {
             // Add tree visualization after each iteration
             self.print_tree();
 
+            // Log node_to_children for debugging
+            self.log_node_to_children();
+
             if self.is_finished() {
                 println!("Search finished - termination condition met");
                 break;
@@ -1398,76 +1401,57 @@ impl SearchTree {
         }
     }
 
-    fn print_tree(&self) {
-        println!("\nCurrent Tree State:");
-        // Start by printing the root node without any prefix
-        self.print_node(self.root_node_index, "", true, true);
-        println!(); // Extra line for readability
-    }
-
-    fn print_node(&self, node_index: usize, prefix: &str, is_last: bool, is_root: bool) {
+    fn print_node(&self, node_index: usize, prefix: &str) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
             None => return,
         };
 
-        // Prepare the node information
-        let visits = node.visits;
-        let value = node.value;
-        let reward = node.reward_value;
-
-        // Create the action display string
-        let action_str = node
-            .action
-            .as_ref()
-            .map_or("(No Action)".to_string(), |a| match a {
-                ActionToolParameters::Tool(t) => format!("Tool: {}", t.to_tool_type().to_string()),
-                ActionToolParameters::Errored(e) => {
-                    let error_msg = e
-                        .lines()
-                        .next()
-                        .unwrap_or(e)
-                        .chars()
-                        .take(30)
-                        .collect::<String>();
-                    format!("Error: {}", error_msg)
-                }
-            });
-
-        if is_root {
-            // Print the root node without any prefix or branch symbols
-            println!(
-                "Node {} (v:{}, val:{:.2}, r:{}) {}",
-                node_index, visits, value, reward, action_str
-            );
-        } else {
-            // Print the current node with prefix and branch symbols
-            println!(
-                "{}{} Node {} (v:{}, val:{:.2}, r:{}) {}",
-                prefix,
-                if is_last { "└──" } else { "├──" },
-                node_index,
-                visits,
-                value,
-                reward,
-                action_str
-            );
-        }
-
-        // Prepare the new prefix for the next level
-        let new_prefix = if is_root {
-            "".to_owned() // No prefix for root's children
-        } else {
-            format!("{}{}", prefix, if is_last { "    " } else { "│   " })
+        // Format node information
+        let action_str = match &node.action {
+            Some(ActionToolParameters::Errored(err)) => format!("Error: {}", err),
+            Some(ActionToolParameters::Tool(tool)) => format!("Tool: {}", tool.to_tool_type()),
+            None => String::from("(No Action)"),
         };
 
+        // Print the current node
+        println!(
+            "{}Node {} (v:{}, val:{:.2}, r:{}) {}",
+            prefix,
+            node_index,
+            node.visits,
+            node.reward_value,
+            node.reward.as_ref().map_or(0, |r| r.value()),
+            action_str
+        );
+
+        // Get children of the current node
+        let children = self
+            .node_to_children
+            .get(&node_index)
+            .cloned()
+            .unwrap_or_default();
+
+        // this is the vertical bar that drops from the parent node
+        let children_prefix = format!("{}{}", prefix, "│   ");
+
         // Print all children
-        if let Some(children) = self.node_to_children.get(&node_index) {
-            let child_count = children.len();
-            for (i, child_index) in children.iter().enumerate() {
-                let is_last_child = i == child_count - 1;
-                self.print_node(*child_index, &new_prefix, is_last_child, false);
-            }
+        for (i, child_index) in children.iter().enumerate() {
+            self.print_node(*child_index, &children_prefix);
+        }
+    }
+
+    fn print_tree(&self) {
+        println!("\nCurrent Tree State:");
+        self.print_node(self.root_node_index, "");
+        println!(); // Extra line for readability
+    }
+
+    // Add this helper method for logging node_to_children
+    fn log_node_to_children(&self) {
+        println!("Current node_to_children mapping:");
+        for (parent_index, children_indices) in &self.node_to_children {
+            println!("Node {}: {:?}", parent_index, children_indices);
         }
     }
 }

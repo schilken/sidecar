@@ -144,10 +144,15 @@ impl VariableInformation {
 
     pub fn base_content(&self) -> String {
         if let Some(initial_patch) = self.initial_patch.as_ref() {
-            let patch = diffy::Patch::from_str(&initial_patch);
-            diffy::apply(&self.content, &patch.expect("Patch generation should work"))
-                .expect("diffy::apply to work")
+            println!("content: {}", self.content);
+            println!("initial_patch: {}", initial_patch);
+            // Parse patch once and store it
+            let parsed_patch =
+                diffy::Patch::from_str(&initial_patch).expect("Patch generation should work");
+            println!("patch: {}", &parsed_patch);
+            diffy::apply(&self.content, &parsed_patch).expect("diffy::apply to work")
         } else {
+            println!("No initial patch found");
             self.content.to_owned()
         }
     }

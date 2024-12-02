@@ -1169,7 +1169,7 @@ impl SearchTree {
         let mut current_node_index = node_index;
         loop {
             let node_parent_index = {
-                let node = self.get_node(node_index);
+                let node = self.get_node(current_node_index);
                 if let Some(node) = node {
                     let parent = self.parent(node);
                     parent.map(|parent_node| parent_node.index())

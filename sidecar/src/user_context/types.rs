@@ -568,6 +568,25 @@ impl UserContext {
                 }
             })
             .collect();
+
+        // we might also have a case where the file path was not tracked before
+        // so we should start tracking it right now
+        if self
+            .variables
+            .iter()
+            .find(|variable| variable.is_file() && variable.fs_file_path == fs_file_path)
+            .is_none()
+        {
+            // TODO(skcd): Pass this information in a better way, we are hardcoding
+            // the ranges and everything else over here
+            self.variables.push(VariableInformation::create_file(
+                Range::new(Position::new(0, 0, 0), Position::new(0, 0, 0)),
+                fs_file_path.to_owned(),
+                fs_file_path.to_owned(),
+                updated_content.to_owned(),
+                "python".to_owned(),
+            ));
+        }
     }
 
     // we want to carry over the variable information from previous steps, we can

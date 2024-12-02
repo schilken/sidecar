@@ -218,7 +218,10 @@ impl ActionNode {
         self.value = 0.0;
         self.observation = None;
         self.is_duplicate = false;
-        self.feedback = None;
+        // TODO(skcd): disable the reseting of the feedback, we populate it from the top
+        // maybe this is the wrong way to do this, the reset should not care
+        // about what sets it up
+        // self.feedback = None;
         self.action = None;
     }
 

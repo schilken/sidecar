@@ -75,6 +75,45 @@ pub struct Selector {
 }
 
 impl Selector {
+    pub fn new(
+        exploitation_weight: f32,
+        use_average_reward: bool,
+        exploration_weight: f32,
+        depth_weight: f32,
+        depth_bonus_factor: f32,
+        high_value_threshold: f32,
+        low_value_threshold: f32,
+        very_high_value_threshold: f32,
+        high_value_leaf_bonus_constant: f32,
+        high_value_bad_children_bonus_constant: f32,
+        high_value_child_penalty_constant: f32,
+        finished_trajectory_penalty: f32,
+        expect_correction_bonus: f32,
+        check_for_bad_child_actions: Vec<ToolType>,
+        diversity_weight: f32,
+        duplicate_child_penalty_constant: f32,
+        duplicate_action_penalty_constant: f32,
+    ) -> Self {
+        Self {
+            exploitation_weight,
+            use_average_reward,
+            expect_correction_bonus,
+            exploration_weight,
+            depth_bonus_factor,
+            depth_weight,
+            diversity_weight,
+            high_value_bad_children_bonus_constant,
+            high_value_child_penalty_constant,
+            high_value_leaf_bonus_constant,
+            high_value_threshold,
+            very_high_value_threshold,
+            low_value_threshold,
+            finished_trajectory_penalty,
+            check_for_bad_child_actions,
+            duplicate_action_penalty_constant,
+            duplicate_child_penalty_constant,
+        }
+    }
     /// Calculate the exploitation component of the UCT score.
     ///
     /// Purpose: Favors nodes with higher rewards, encouraging the algorithm to exploit
@@ -141,7 +180,7 @@ impl Selector {
             self.high_value_threshold,
             self.check_for_bad_child_actions.to_vec(),
             self.low_value_threshold,
-            self.exploration_weight,
+            self.exploitation_weight,
         )
     }
 
@@ -178,7 +217,7 @@ impl Selector {
             node_index,
             self.high_value_threshold,
             self.low_value_threshold,
-            self.exploration_weight,
+            self.exploitation_weight,
         )
     }
 
@@ -204,6 +243,24 @@ impl Selector {
         graph.calculate_expect_correction_bonus(node_index, self.expect_correction_bonus)
     }
 
+    /// Calculate penalty for nodes that have children with duplicate action names.
+    /// The penalty increases with each duplicate action.
+    ///
+    /// Purpose: Discourages selecting nodes whose children perform the same type of action
+    /// multiple times, promoting more diverse action sequences.
+    pub fn calculate_duplicate_action_penalty(&self, node_index: usize, graph: &SearchTree) -> f32 {
+        graph.calculate_duplicate_action_penalty(node_index, self.duplicate_action_penalty_constant)
+    }
+
+    /// Calculate penalty for nodes that have duplicate children.
+    /// The penalty increases with each duplicate child.
+    ///
+    /// Purpose: Discourages exploration of nodes that tend to generate duplicate states,
+    /// as these are likely to be less productive paths in the search space.
+    pub fn calculate_duplicate_child_penalty(&self, node_index: usize, graph: &SearchTree) -> f32 {
+        graph.calculate_duplicate_child_penalty(node_index, self.duplicate_child_penalty_constant)
+    }
+
     /// Compute the UCT score with additional bonuses and penalties based on node characteristics.
     ///
     /// This method combines various components to create a comprehensive score for node selection,
@@ -225,9 +282,10 @@ impl Selector {
         let finished_trajectory_penalty =
             self.calculate_finished_trajectory_penalty(node_index, graph);
         let expect_correction_bonus = self.calculate_expect_correction_bonus(node_index, graph);
+        // TODO(skcd): We have to update the diversity score over here
         let diversity_bonus = 0.0;
-        let duplicate_child_penalty = 0.0;
-        let duplicate_action_penalty = 0.0;
+        let duplicate_child_penalty = self.calculate_duplicate_child_penalty(node_index, graph);
+        let duplicate_action_penalty = self.calculate_duplicate_action_penalty(node_index, graph);
         let final_score = exploitation + exploration + depth_bonus - depth_penalty
             + high_value_leaf_node
             + high_value_bad_children_bonus

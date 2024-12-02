@@ -29,6 +29,7 @@ use super::{
     },
     editor::apply::EditorApply,
     errors::ToolError,
+    feedback::feedback::FeedbackClientGenerator,
     file::file_finder::ImportantFilesFinderBroker,
     filtering::broker::CodeToEditFormatterBroker,
     git::{diff_client::GitDiffClient, edited_files::EditedFiles},
@@ -62,6 +63,7 @@ use super::{
     ref_filter::ref_filter::ReferenceFilterBroker,
     repo_map::generator::RepoMapGeneratorClient,
     rerank::base::ReRankBroker,
+    reward::client::RewardClientGenerator,
     search::big_search::BigSearchBroker,
     session::{
         ask_followup_question::AskFollowupQuestions, attempt_completion::AttemptCompletionClient,
@@ -444,7 +446,7 @@ impl ToolBroker {
         );
         tools.insert(
             ToolType::ContextDriveHotStreakReply,
-            Box::new(SessionHotStreakClient::new(llm_client)),
+            Box::new(SessionHotStreakClient::new(llm_client.clone())),
         );
         tools.insert(ToolType::TerminalCommand, Box::new(TerminalTool::new()));
         tools.insert(
@@ -469,6 +471,14 @@ impl ToolBroker {
             Box::new(SubProcessSpawnedPendingOutputClient::new()),
         );
         tools.insert(ToolType::TestRunner, Box::new(TestRunner {}));
+        tools.insert(
+            ToolType::RewardGeneration,
+            Box::new(RewardClientGenerator::new(llm_client.clone())),
+        );
+        tools.insert(
+            ToolType::FeedbackGeneration,
+            Box::new(FeedbackClientGenerator::new(llm_client)),
+        );
         // we also want to add the re-ranking tool here, so we invoke it freely
         Self { tools }
     }
@@ -514,5 +524,35 @@ impl Tool for ToolBroker {
 
     fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
         vec![]
+    }
+}
+
+impl ToolBroker {
+    pub fn generate_evaluation_criteria(
+        &self,
+        tool_type: ToolType,
+        trajectory_length: usize,
+    ) -> Vec<String> {
+        let tool_in_map = self.tools.get(&tool_type);
+        match tool_in_map {
+            Some(tool) => tool.get_evaluation_criteria(trajectory_length),
+            None => {
+                vec![]
+            }
+        }
+    }
+
+    pub fn generate_reward_scale(
+        &self,
+        tool_type: ToolType,
+        trajectory_length: usize,
+    ) -> Vec<ToolRewardScale> {
+        let tool_in_map = self.tools.get(&tool_type);
+        match tool_in_map {
+            Some(tool) => tool.get_reward_scale(trajectory_length),
+            None => {
+                vec![]
+            }
+        }
     }
 }

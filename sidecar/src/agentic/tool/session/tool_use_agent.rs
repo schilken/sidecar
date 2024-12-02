@@ -654,12 +654,18 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         let mut tool_use_generator = ToolUseGenerator::new(tool_update_sender);
 
         // run this in a background thread for now
+        let tool_found_token = tokio_util::sync::CancellationToken::new();
+        let cloned_tool_found_token = tool_found_token.clone();
         let cloned_cancellation_token = cancellation_token.clone();
         let delta_updater_task = tokio::spawn(async move {
             while let Some(Some(stream_msg)) =
                 run_with_cancellation(cloned_cancellation_token.clone(), delta_receiver.next())
                     .await
             {
+                // if we have found a tool then break and flush
+                if cloned_tool_found_token.is_cancelled() {
+                    break;
+                }
                 let delta = stream_msg.delta();
                 if let Some(delta) = delta {
                     tool_use_generator.add_delta(delta);
@@ -702,6 +708,10 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                         exchange_id.to_owned(),
                         tool_found,
                     ));
+                    // cancel the token once we have a tool
+                    tool_found_token.cancel();
+                    // If we have found a tool we should break hard over here
+                    break;
                 }
                 ToolBlockEvent::ToolParameters(tool_parameters_update) => {
                     let _ = ui_sender.clone().send(UIEventWithID::tool_parameter_found(

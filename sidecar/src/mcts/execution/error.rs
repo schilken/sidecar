@@ -2,7 +2,7 @@
 //! The error type over here is a bit more refined to be able
 //! to react to the various error types since the feedback is essential
 
-use crate::agentic::tool::errors::ToolError;
+use crate::agentic::{symbol::errors::SymbolError, tool::errors::ToolError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum InferenceError {
@@ -11,4 +11,10 @@ pub enum InferenceError {
 
     #[error("Empty trajectory")]
     EmptyTrajectory,
+
+    #[error("Wrong tool type")]
+    WrongToolOutput,
+
+    #[error("Symbol error: {0}")]
+    SymbolError(#[from] SymbolError),
 }

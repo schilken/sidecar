@@ -1,18 +1,83 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    process::Stdio,
+    sync::Arc,
+};
+
+use llm_client::broker::LLMBroker;
 
 use crate::{
-    agentic::tool::{input::ToolInputPartial, r#type::ToolType},
+    agentic::{
+        symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
+        tool::{input::ToolInputPartial, r#type::ToolType},
+    },
     user_context::types::UserContext,
 };
 
-use super::{selector::selector::Selector, value_function::reward::Reward};
+use super::{
+    execution::inference::InferenceEngine,
+    feedback::feedback::FeedbackGenerator,
+    selector::selector::Selector,
+    value_function::reward::{Reward, RewardGeneration},
+};
 
-#[derive(Clone)]
+#[derive(Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+pub enum ActionObservationMetadataKey {
+    FileContentUpdated(String),
+}
+
+#[derive(Clone, Debug)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
+    /// The metadata here contains extra information about the action which have been
+    /// performed and any trace information which we want to keep
+    metadata: HashMap<ActionObservationMetadataKey, String>,
+}
+
+impl ActionObservation {
+    pub fn errored(message: String, expect_correction: bool, terminal: bool) -> Self {
+        Self {
+            message,
+            summary: None,
+            terminal,
+            expect_correction,
+            metadata: Default::default(),
+        }
+    }
+
+    pub fn new(message: String, summary: String, terminal: bool) -> Self {
+        Self {
+            message,
+            summary: Some(summary),
+            terminal,
+            expect_correction: false,
+            metadata: Default::default(),
+        }
+    }
+
+    pub fn file_content_updated(mut self, fs_file_path: String, file_content: String) -> Self {
+        self.metadata.insert(
+            ActionObservationMetadataKey::FileContentUpdated(fs_file_path),
+            file_content,
+        );
+        self
+    }
+
+    pub fn get_updated_file_content(&self) -> HashMap<String, String> {
+        self.metadata
+            .iter()
+            .filter_map(|(key, value)| {
+                if let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key {
+                    Some((fs_file_path.to_owned(), value.to_owned()))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 impl ActionObservation {
@@ -23,13 +88,51 @@ impl ActionObservation {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn expect_correction(&self) -> bool {
+        self.expect_correction
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum ActionToolParameters {
+    Errored(String),
+    Tool(ToolInputPartial),
+}
+
+impl ActionToolParameters {
+    pub fn errored(error_str: String) -> Self {
+        Self::Errored(error_str)
+    }
+
+    pub fn tool(tool_input: ToolInputPartial) -> Self {
+        Self::Tool(tool_input)
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Errored(error_string) => {
+                format!("Failed to generate action. Error: {error_string}")
+            }
+            Self::Tool(tool_input_partial) => tool_input_partial.to_string(),
+        }
+    }
+
+    pub fn to_tool_type(&self) -> Option<ToolType> {
+        match self {
+            Self::Errored(_) => None,
+            Self::Tool(tool_input_partial) => Some(tool_input_partial.to_tool_type()),
+        }
+    }
 }
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
+#[derive(Debug)]
 pub struct ActionNode {
     index: usize,
-    action: Option<ToolInputPartial>,
+    action: Option<ActionToolParameters>,
+    /// The tree dictates the control vector for the node
     feedback: Option<String>,
     is_duplicate: bool,
     reward: Option<Reward>,
@@ -41,6 +144,8 @@ pub struct ActionNode {
     user_context: UserContext,
     // the message associated with the node
     message: Option<String>,
+    // the reward value for the node
+    reward_value: f32,
 }
 
 impl ActionNode {
@@ -57,15 +162,25 @@ impl ActionNode {
             observation: None,
             user_context: UserContext::default(),
             message: None,
+            reward_value: 0.0,
         }
+    }
+
+    pub fn index(&self) -> usize {
+        self.index
     }
 
     pub fn observation(&self) -> Option<ActionObservation> {
         self.observation.clone()
     }
 
-    pub fn action(&self) -> Option<ToolInputPartial> {
+    pub fn action(&self) -> Option<ActionToolParameters> {
         self.action.clone()
+    }
+
+    pub fn set_message(mut self, message: String) -> Self {
+        self.message = Some(message);
+        self
     }
 
     pub fn message(&self) -> Option<String> {
@@ -74,6 +189,10 @@ impl ActionNode {
 
     pub fn reward(&self) -> Option<&Reward> {
         self.reward.as_ref()
+    }
+
+    pub fn is_duplicate(&self) -> bool {
+        self.is_duplicate
     }
 
     // TODO(skcd): Fix this and keep track of it properly
@@ -99,7 +218,10 @@ impl ActionNode {
         self.value = 0.0;
         self.observation = None;
         self.is_duplicate = false;
-        self.feedback = None;
+        // TODO(skcd): disable the reseting of the feedback, we populate it from the top
+        // maybe this is the wrong way to do this, the reset should not care
+        // about what sets it up
+        // self.feedback = None;
         self.action = None;
     }
 
@@ -109,6 +231,11 @@ impl ActionNode {
 
     pub fn feedback(&self) -> Option<String> {
         self.feedback.clone()
+    }
+
+    pub fn update_user_context(mut self, user_context: UserContext) -> Self {
+        self.user_context = user_context;
+        self
     }
 }
 
@@ -122,17 +249,93 @@ pub struct SearchTree {
     root_node_index: usize,
     /// maximum depth the nodes can go to
     max_depth: u32,
+    /// maximum iterations or actions we will run
+    max_iterations: usize,
+    /// the maximum finished nodes the tree can have
+    max_finished_nodes: Option<usize>,
+    /// The min reward threshold to consider before finishing
+    reward_threshold: Option<f32>,
+    /// The minimum number of finished nodes to consider before finishing
+    min_finished_nodes: Option<usize>,
+
     selector: Selector,
     tools: Vec<ToolType>,
+    // the working directory
+    root_directory: String,
+    // the LLM Client
+    llm_client: Arc<LLMBroker>,
+    // repo-ref
+    repo_name: String,
+    // The tool box
+    tool_box: Arc<ToolBox>,
 }
 
 impl SearchTree {
+    pub fn new(
+        max_expansions: usize,
+        max_depth: u32,
+        max_iterations: usize,
+        max_finished_nodes: Option<usize>,
+        reward_threshold: Option<f32>,
+        min_finished_nodes: Option<usize>,
+        root_directory: String,
+        repo_name: String,
+        problem_statement: String,
+        selector: Selector,
+        tools: Vec<ToolType>,
+        tool_box: Arc<ToolBox>,
+        llm_client: Arc<LLMBroker>,
+    ) -> Self {
+        let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
+        Self {
+            index_to_node: vec![(0, root_node)].into_iter().collect(),
+            node_to_children: Default::default(),
+            node_to_parent: Default::default(),
+            max_expansions,
+            root_node_index: 0,
+            max_depth,
+            max_iterations,
+            max_finished_nodes,
+            reward_threshold,
+            min_finished_nodes,
+            selector,
+            tool_box,
+            tools,
+            root_directory,
+            llm_client,
+            repo_name,
+        }
+    }
+    pub fn root(&self) -> Option<&ActionNode> {
+        self.index_to_node.get(&self.root_node_index)
+    }
+
     pub fn parent(&self, node: &ActionNode) -> Option<&ActionNode> {
         if let Some(parent_index) = self.node_to_parent.get(&node.index) {
             self.index_to_node.get(parent_index)
         } else {
             None
         }
+    }
+
+    pub fn repo_name(&self) -> String {
+        self.repo_name.to_owned()
+    }
+
+    pub fn root_directory(&self) -> String {
+        self.root_directory.to_owned()
+    }
+
+    pub fn llm_client(&self) -> Arc<LLMBroker> {
+        self.llm_client.clone()
+    }
+
+    pub fn tools(&self) -> Vec<ToolType> {
+        self.tools.to_vec()
+    }
+
+    pub fn tool_box(&self) -> Arc<ToolBox> {
+        self.tool_box.clone()
     }
 
     fn add_node(&mut self, node_index: usize, node: ActionNode) {
@@ -164,6 +367,83 @@ impl SearchTree {
         self.index_to_node.get(&node_index)
     }
 
+    fn finished_nodes(&self) -> Vec<&ActionNode> {
+        self.index_to_node
+            .values()
+            .into_iter()
+            .filter_map(|node| match node.action() {
+                Some(action) => match action.to_tool_type() {
+                    Some(tool_type) => {
+                        if tool_type == ToolType::AttemptCompletion {
+                            Some(node)
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
+                },
+                None => None,
+            })
+            .collect()
+    }
+
+    /// Detects if wee should be allowed to keep running search or we are done
+    pub fn is_finished(&self) -> bool {
+        if self.index_to_node.len() >= self.max_iterations {
+            true
+        } else {
+            let finished_nodes = self.finished_nodes();
+            let unique_finished_parent_nodes = finished_nodes
+                .into_iter()
+                .filter_map(|node| {
+                    let parent = self.parent(node);
+                    match parent {
+                        Some(parent) => Some(parent),
+                        None => None,
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let unique_finished_parent_node_ids = unique_finished_parent_nodes
+                .iter()
+                .map(|node| node.index())
+                .collect::<HashSet<usize>>();
+
+            // If we have more finished nodes
+            if let Some(max_finished_nodes) = self.max_finished_nodes {
+                if unique_finished_parent_node_ids.len() >= max_finished_nodes {
+                    return true;
+                }
+            }
+
+            // if we have reached our reward threshold
+            if let Some(reward_threshold) = self.reward_threshold {
+                if unique_finished_parent_nodes.iter().any(|node| {
+                    if let Some(reward) = node.reward() {
+                        if reward.value() as f32 >= reward_threshold {
+                            if let Some(min_finished_nodes) = self.min_finished_nodes {
+                                if unique_finished_parent_node_ids.len() >= min_finished_nodes {
+                                    return true;
+                                }
+                            }
+                        }
+                        false
+                    } else {
+                        false
+                    }
+                }) {
+                    return true;
+                }
+            }
+
+            let expandable_nodes = self.expandable_node(self.root_node_index);
+            if expandable_nodes.is_empty() {
+                return true;
+            }
+            false
+        }
+    }
+
     fn children_indices(&self, node: &ActionNode) -> Option<Vec<usize>> {
         self.children(node)
             .map(|children| children.into_iter().map(|child| child.index).collect())
@@ -185,6 +465,30 @@ impl SearchTree {
             current_node = parent_node;
         }
         current_node
+    }
+
+    pub fn get_sibling_nodes(&self, node_index: usize) -> Vec<&ActionNode> {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return vec![];
+        }
+        let node = node.expect("if let None to hold");
+        let parent = self.parent(node);
+        if parent.is_none() {
+            return vec![];
+        }
+        let parent = parent.expect("if let None to hold");
+
+        // look at all the children of the parent and exclude the node we are at
+        // to get the siblings for the current node
+        self.children(parent)
+            .map(|children| {
+                children
+                    .into_iter()
+                    .filter(|child| child.index != node_index)
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Creates the mean reward on the trajectory over here by traversing the tree
@@ -210,6 +514,20 @@ impl SearchTree {
             let rewards_len = rewards.len();
             let rewards_sum: f32 = rewards.into_iter().sum();
             rewards_sum / (rewards_len as f32)
+        }
+    }
+
+    pub fn calculate_exploitation(&self, node_index: usize, exploitation_weigth: f32) -> f32 {
+        // should we go for the average weight over here on the trajectory
+        // or should we go for the absolute weight? open question
+        if let Some(reward) = self
+            .get_node(node_index)
+            .map(|node| node.reward())
+            .flatten()
+        {
+            reward.value() as f32 * exploitation_weigth
+        } else {
+            0.0
         }
     }
 
@@ -302,20 +620,20 @@ impl SearchTree {
         high_value_threshold: f32,
         bad_child_actions: Vec<ToolType>,
         low_value_threshold: f32,
-        exploration_weight: f32,
+        exploitation_weight: f32,
     ) -> f32 {
         let node = self.get_node(node_index);
         if let None = node {
             return 0.0;
         }
         let node = node.expect("if let None to hold");
-        let exploration = self.calculate_exploration(node_index, exploration_weight);
+        let exploitation = self.calculate_exploitation(node_index, exploitation_weight);
         let node_children = self.children(node);
         let node_children = node_children
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default();
         // empty of no children
-        if !node_children.is_empty() && exploration >= high_value_threshold {
+        if !node_children.is_empty() && exploitation >= high_value_threshold {
             let child_rewards = node_children
                 .to_vec()
                 .into_iter()
@@ -330,7 +648,7 @@ impl SearchTree {
                     .to_vec()
                     .into_iter()
                     .filter_map(|child| child.action.clone())
-                    .map(|tool_parameters| tool_parameters.to_tool_type())
+                    .filter_map(|tool_parameters| tool_parameters.to_tool_type())
                     .any(|tool_type| {
                         bad_child_actions
                             .to_vec()
@@ -346,7 +664,7 @@ impl SearchTree {
                 // this is an approximation to how much value we can give back
                 // the 5 here is sus but I presume it comes from the expansion factor
                 if average_child_reward_value <= low_value_threshold {
-                    return (exploration - average_child_reward_value) * 5.0;
+                    return (exploitation - average_child_reward_value) * 5.0;
                 }
             }
         }
@@ -390,7 +708,7 @@ impl SearchTree {
         node_index: usize,
         high_value_threshold: f32,
         low_value_threshold: f32,
-        exploration_weight: f32,
+        exploitation_weight: f32,
     ) -> f32 {
         let node = self.get_node(node_index);
         if let None = node {
@@ -401,7 +719,7 @@ impl SearchTree {
         let node_children = node_children
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default();
-        let exploration = self.calculate_exploration(node_index, exploration_weight);
+        let exploration = self.calculate_exploitation(node_index, exploitation_weight);
         if !node_children.is_empty() {
             let parent_node = self.parent(node);
             if let Some(parent) = parent_node {
@@ -500,6 +818,71 @@ impl SearchTree {
         return 0.0;
     }
 
+    pub fn calculate_duplicate_action_penalty(
+        &self,
+        node_index: usize,
+        duplicate_action_penalty_constant: f32,
+    ) -> f32 {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return 0.0;
+        }
+        let node = node.expect("if let None to hold");
+        let children: Vec<_> = self
+            .children(node)
+            .map(|children| children.collect())
+            .unwrap_or_default();
+
+        // how many times have we performed an action
+        let mut action_times: HashMap<ToolType, usize> = Default::default();
+        children.into_iter().for_each(|child| {
+            let child_tool_type = child.action().map(|action| action.to_tool_type()).flatten();
+            if let Some(tool_type) = child_tool_type {
+                if let Some(action_times_taken) = action_times.get_mut(&tool_type) {
+                    *action_times_taken = *action_times_taken + 1;
+                } else {
+                    action_times.insert(tool_type, 1);
+                }
+            }
+        });
+
+        let mut penalty = 0.0;
+        action_times.values().for_each(|action_taken_times| {
+            if *action_taken_times > 0 {
+                penalty = penalty
+                    + (action_taken_times - 1).pow(2) as f32 * duplicate_action_penalty_constant
+            }
+        });
+
+        penalty
+    }
+
+    pub fn calculate_duplicate_child_penalty(
+        &self,
+        node_index: usize,
+        duplicate_child_penalty_constant: f32,
+    ) -> f32 {
+        let node = self.get_node(node_index);
+        if let None = node {
+            return 0.0;
+        }
+        let node = node.expect("if let None to work");
+        let children: Vec<_> = self
+            .children(node)
+            .map(|children| children.collect())
+            .unwrap_or_default();
+        let duplicate_children = children
+            .into_iter()
+            .filter(|children| children.is_duplicate())
+            .collect::<Vec<_>>()
+            .len();
+        if duplicate_children > 0 {
+            duplicate_child_penalty_constant * (duplicate_children.pow(2) as f32)
+        } else {
+            0.0
+        }
+    }
+
     /// How many times was the node visited
     pub fn node_visits(&self, node_index: usize) -> f32 {
         let node = self.get_node(node_index);
@@ -508,11 +891,6 @@ impl SearchTree {
         }
         let node = node.expect("if let None to work");
         node.visits as f32
-    }
-
-    /// Iterates on the search tree until its finished completely
-    pub fn run_search(&mut self, node: ActionNode) -> ActionNode {
-        todo!("")
     }
 
     pub fn is_node_fully_expanded(&self, node_index: usize) -> bool {
@@ -527,7 +905,7 @@ impl SearchTree {
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default()
             .len();
-        children_len < node.max_expansions
+        children_len >= node.max_expansions
     }
 
     fn is_node_duplicate(&self, node_index: usize) -> bool {
@@ -550,7 +928,6 @@ impl SearchTree {
         }
         let node = node.expect("if let None to hold");
 
-        // we can expand on the current node
         if !node.is_terminal_observation()
             && !self.is_node_fully_expanded(node_index)
             && !self.is_node_duplicate(node_index)
@@ -573,6 +950,10 @@ impl SearchTree {
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
         let expandable_nodes = self.expandable_node(self.root_node_index);
+        println!(
+            "Selection phase - {} expandable nodes",
+            expandable_nodes.len()
+        );
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {
             let node = self.get_node(expandable_node_index);
@@ -587,6 +968,7 @@ impl SearchTree {
         }
 
         if filtered_nodes.is_empty() {
+            // so we're hitting this branch for first run, which causes us to break?
             return None;
         } else {
             // find the selector
@@ -636,7 +1018,9 @@ impl SearchTree {
 
         let child_node_index = self.get_new_node_index();
 
-        let child_node = ActionNode::new(child_node_index, self.max_expansions);
+        let child_node = ActionNode::new(child_node_index, self.max_expansions)
+            // transfer the user context properly
+            .update_user_context(node.user_context.clone().copy_at_instance());
         // keep track of the child node
         self.add_node(child_node_index, child_node);
         // keep track of the edges
@@ -684,30 +1068,396 @@ impl SearchTree {
         }
     }
 
-    fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
+    /// is_duplicate checks the siblings to make sure that this is not a duplicate node
+    pub fn is_duplicate(
+        &self,
+        current_node: &ActionNode,
+        action_to_take: &ActionToolParameters,
+    ) -> bool {
+        let siblings = self.get_sibling_nodes(current_node.index);
+        let is_duplicate = siblings.into_iter().any(|sibling| {
+            if let Some(action) = sibling.action() {
+                match (action, action_to_take) {
+                    (
+                        ActionToolParameters::Errored(first_error),
+                        &ActionToolParameters::Errored(ref second_error),
+                    ) => &first_error == second_error,
+                    (
+                        ActionToolParameters::Tool(first_tool_input_parameters),
+                        &ActionToolParameters::Tool(ref second_tool_input_parameters),
+                    ) => {
+                        let first_tool_type = first_tool_input_parameters.to_tool_type();
+                        let second_tool_type = second_tool_input_parameters.to_tool_type();
+                        if first_tool_type != second_tool_type {
+                            false
+                        } else {
+                            // now we can compare the tool input parameters
+                            // since they do not have the thinking over here
+                            first_tool_type.to_string() == second_tool_type.to_string()
+                        }
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            }
+        });
+
+        is_duplicate
+    }
+
+    pub fn trajectory(&self, node_index: usize) -> Vec<&ActionNode> {
         let mut leaf_to_root = self.leaf_to_root(node_index);
         leaf_to_root.reverse();
         leaf_to_root
     }
 
-    pub fn run_node(&mut self, node_index: usize) {
+    fn update_node(
+        &mut self,
+        node_index: usize,
+        action_observation: Option<ActionObservation>,
+        action_tool_parameters: ActionToolParameters,
+        is_duplicate: bool,
+    ) {
         let node = self.get_node_mut(node_index);
         if let None = node {
             return;
         }
         let node = node.expect("if let None to hold");
-        // reset the node
-        node.reset();
-        // reset the graph at this node as well
-        self.reset_children_for_node(node_index);
+        node.is_duplicate = is_duplicate;
+        node.action = Some(action_tool_parameters);
+        node.observation = action_observation;
+        // update the node content over here
+        if let Some(observation) = node.observation() {
+            let updated_file_content = observation.get_updated_file_content();
+            updated_file_content
+                .into_iter()
+                .for_each(|(fs_file_path, updated_file_content)| {
+                    // now we update the file content present in the user context
+                    node.user_context
+                        .update_file_content(&fs_file_path, &updated_file_content);
+                })
+        }
+    }
+
+    pub async fn run_node(
+        &mut self,
+        node_index: usize,
+        message_properties: SymbolEventMessageProperties,
+    ) {
+        println!("Simulating node {}", node_index);
+        {
+            let node = self.get_node_mut(node_index);
+            if let None = node {
+                return;
+            }
+            let node = node.expect("if let None to hold");
+            // reset the node
+            node.reset();
+            // reset the graph at this node as well
+            self.reset_children_for_node(node_index);
+        }
 
         // first we generate the message which we want to run inference for the
         // trajectory
-        let _node_trajectory = self.trajectory(node_index);
+        let nodes_trajectory = self.trajectory(node_index);
 
+        let inference_engine = InferenceEngine::new();
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node
+        let inference_result = inference_engine
+            .execute(
+                nodes_trajectory,
+                &self,
+                self.tool_box.clone(),
+                message_properties.clone(),
+            )
+            .await;
+
         // - generate the value reward
+        match inference_result {
+            Err(e) => {
+                println!("Node {} simulation failed: {}", node_index, e);
+                return;
+            }
+            Ok(inference_result) => {
+                println!("Node {} simulation complete", node_index);
+                let action_observation = inference_result.action_observation();
+                let observation_present = action_observation.is_some();
+                let action_tool_parameters = inference_result.action_tool_parameters();
+                let is_duplicate = inference_result.is_duplicate();
+                self.update_node(
+                    node_index,
+                    action_observation,
+                    action_tool_parameters,
+                    is_duplicate,
+                );
+
+                // generate the reward
+                if !is_duplicate && observation_present {
+                    // TODO(skcd): Figure out the correct conditions for giving
+                    // the reward over here
+                    let nodes_trajectory = self.trajectory(node_index);
+                    let reward = RewardGeneration::new()
+                        .generate_reward(nodes_trajectory, &self, message_properties.clone())
+                        .await;
+
+                    let node = self.get_node_mut(node_index);
+                    if let Some(node) = node {
+                        match reward {
+                            Ok(reward) => {
+                                node.reward = Some(reward);
+                            }
+                            Err(_e) => {
+                                node.reward = None;
+                            }
+                        }
+                    };
+                }
+            }
+        }
+    }
+
+    pub fn backpropogate(&mut self, node_index: usize) {
+        println!("Starting backpropagation from node {}", node_index);
+        let node_reward = self
+            .get_node(node_index)
+            .map(|node| node.reward().cloned())
+            .flatten();
+        if let None = node_reward {
+            return;
+        }
+        let node_reward = node_reward.expect("if let None to hold");
+        let reward_value = node_reward.value();
+        let mut current_node_index = node_index;
+        loop {
+            let node_parent_index = {
+                let node = self.get_node(current_node_index);
+                if let Some(node) = node {
+                    let parent = self.parent(node);
+                    parent.map(|parent_node| parent_node.index())
+                } else {
+                    None
+                }
+            };
+            let node = self.get_node_mut(current_node_index);
+            if let Some(node) = node {
+                node.reward_value = node.reward_value + reward_value as f32;
+                node.visits = node.visits + 1;
+                if let Some(parent_index) = node_parent_index {
+                    current_node_index = parent_index
+                } else {
+                    // if we have no parent, we have reached the root so we are done
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    async fn generate_feedback_for_node(
+        &mut self,
+        node_index: usize,
+        message_properties: SymbolEventMessageProperties,
+    ) {
+        let nodes_trajectory = self.trajectory(node_index);
+        let feedback = FeedbackGenerator::new()
+            .generate_feedback_for_node(nodes_trajectory, &self, message_properties)
+            .await;
+        if let Ok(Some(feedback)) = feedback {
+            let node = self.get_node_mut(node_index);
+            if let Some(node) = node {
+                node.feedback = Some(feedback.feedback().to_owned());
+            }
+        }
+    }
+
+    /// Rests the file system to the current node since we are working on a lot
+    /// of different nodes at the same time and jumping around
+    async fn reset_file_system(&self, node_index: usize) {
+        // - restore the file system to the original state over here
+        // git add . && git stash
+        // - apply the file content which this node has as part of the base_content in the variables
+        // - profit
+        let node = self.get_node(node_index);
+        if let None = node {
+            return;
+        }
+        let node = node.expect("if let None above to hold");
+
+        // we run the git-command manually over here
+        tokio::process::Command::new("git")
+            .args(&["add", "."])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .expect("to work");
+        tokio::process::Command::new("git")
+            .arg("stash")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .expect("to work");
+
+        // now update the file system to the current node
+        for file_variable in node
+            .user_context()
+            .variables
+            .iter()
+            .filter(|variable| variable.is_file())
+        {
+            let current_content = file_variable.base_content();
+            let fs_file_path = file_variable.fs_file_path.to_owned();
+            let _ = tokio::fs::write(fs_file_path, current_content).await;
+        }
+    }
+
+    pub async fn run_search(&mut self, message_properties: SymbolEventMessageProperties) {
+        println!("\n=== Starting MCTS Search ===");
+        let mut iteration = 0;
+
+        loop {
+            iteration += 1;
+            println!("\n--- Iteration {} ---", iteration);
+
+            // Add tree visualization after each iteration
+            self.print_tree();
+
+            if self.is_finished() {
+                println!("Search finished - termination condition met");
+                break;
+            }
+
+            // Selection phase
+            let selected_node = self.select();
+            if let Some(selected_index) = selected_node {
+                self.log_tree_state(selected_index, "Selected:");
+            } else {
+                println!("No node selected - terminating search");
+                break;
+            }
+
+            // Expansion phase
+            let new_node = selected_node.and_then(|n| self.expand(n));
+            if let Some(new_index) = new_node {
+                self.log_tree_state(new_index, "Expanded:");
+            } else {
+                println!("No expansion possible - terminating search");
+                break;
+            }
+
+            let new_index = new_node.expect("Already checked above");
+
+            // Reset and prepare node
+            self.reset_file_system(new_index).await;
+            println!("Reset filesystem for node {}", new_index);
+
+            self.generate_feedback_for_node(new_index, message_properties.clone())
+                .await;
+            println!("Generated feedback for node {}", new_index);
+
+            // Simulation
+            self.run_node(new_index, message_properties.clone()).await;
+            self.log_tree_state(new_index, "After simulation:");
+
+            // Backpropagation
+            self.backpropogate(new_index);
+            println!("Completed backpropagation from node {}", new_index);
+
+            // Log tree statistics
+            println!(
+                "Tree state: {} total nodes, {} expandable",
+                self.index_to_node.len(),
+                self.expandable_node(self.root_node_index).len()
+            );
+        }
+        println!("=== Search Complete ===\n");
+        // Print final tree state
+        self.print_tree();
+    }
+
+    // Add this helper method for logging tree state
+    fn log_tree_state(&self, node_index: usize, prefix: &str) {
+        let node = self.get_node(node_index).unwrap();
+        let depth = self.get_depth(node_index);
+        let visits = node.visits;
+        let reward = node.reward_value;
+
+        println!(
+            "{prefix} [Node {}] Depth: {}, Visits: {}, Reward: {}",
+            node_index, depth, visits, reward
+        );
+
+        // Log action if present
+        if let Some(action) = &node.action {
+            println!("{prefix}   Action: {}", action.to_string());
+        }
+    }
+
+    fn print_tree(&self) {
+        println!("\nCurrent Tree State:");
+        self.print_node(self.root_node_index, 0, "", true);
+        println!(); // Extra line for readability
+    }
+
+    fn print_node(&self, node_index: usize, depth: usize, prefix: &str, is_root: bool) {
+        let node = match self.get_node(node_index) {
+            Some(n) => n,
+            None => return,
+        };
+
+        // Prepare the node information
+        let visits = node.visits;
+        let value = node.value;
+        let reward = node.reward_value;
+
+        // Create the action display string
+        let action_str = node
+            .action
+            .as_ref()
+            .map_or("(No Action)".to_string(), |a| match a {
+                ActionToolParameters::Tool(t) => format!("Tool: {}", t.to_tool_type().to_string()),
+                ActionToolParameters::Errored(e) => {
+                    let error_msg = e
+                        .lines()
+                        .next()
+                        .unwrap_or(e)
+                        .chars()
+                        .take(30)
+                        .collect::<String>();
+                    format!("Error: {}", error_msg)
+                }
+            });
+
+        // Print the current node
+        if is_root {
+            println!(
+                "Root {} (v:{}, val:{:.2}, r:{}) {}",
+                node_index, visits, value, reward, action_str
+            );
+        } else {
+            println!(
+                "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
+                "  ".repeat(depth),
+                prefix,
+                node_index,
+                visits,
+                value,
+                reward,
+                action_str
+            );
+        }
+
+        // Print all children
+        if let Some(children) = self.node_to_children.get(&node_index) {
+            for (i, child_index) in children.iter().enumerate() {
+                let new_prefix = if i == children.len() - 1 { "" } else { "│ " };
+                self.print_node(*child_index, depth + 1, new_prefix, false);
+            }
+        }
     }
 }

@@ -143,13 +143,17 @@ pub enum ToolType {
     RepoMapGeneration,
     // Sub-process spawned pending output
     SubProcessSpawnedPendingOutput,
+    // Reward generation
+    RewardGeneration,
+    // Feedback generation
+    FeedbackGeneration,
 }
 
 impl std::fmt::Display for ToolType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ToolType::CodeEditing => write!(f, "Code Editing"),
-            ToolType::OpenFile => write!(f, "Open File"),
+            ToolType::CodeEditing => write!(f, "code_edit_input"),
+            ToolType::OpenFile => write!(f, "read_file"),
             ToolType::GoToDefinitions => write!(f, "Go To Definitions"),
             ToolType::GoToReferences => write!(f, "Go To References"),
             ToolType::LSPDiagnostics => write!(f, "LSP Diagnostics"),
@@ -219,7 +223,7 @@ impl std::fmt::Display for ToolType {
             ToolType::PlanUpdater => write!(f, "Plan Updater"),
             ToolType::StepGenerator => write!(f, "Step generator"),
             ToolType::CreateFile => write!(f, "Create File"),
-            ToolType::FileDiagnostics => write!(f, "File Diagnostics"),
+            ToolType::FileDiagnostics => write!(f, "get_diagnostics"),
             ToolType::PlanStepAdd => write!(f, "Plan step add"),
             ToolType::GoToPreviousWordRange => write!(f, "Go to previous word range"),
             ToolType::GoToTypeDefinition => write!(f, "Go to type definition"),
@@ -230,16 +234,18 @@ impl std::fmt::Display for ToolType {
                 f,
                 "Context driven hot streak reply which looks at things out of scope"
             ),
-            ToolType::TerminalCommand => write!(f, "Terminal command"),
-            ToolType::SearchFileContentWithRegex => write!(f, "Searches for files with a regex"),
-            ToolType::ListFiles => write!(f, "List files"),
-            ToolType::AskFollowupQuestions => write!(f, "Ask followup questions"),
-            ToolType::AttemptCompletion => write!(f, "Attempt completion"),
-            ToolType::RepoMapGeneration => write!(f, "Repo map generation"),
+            ToolType::TerminalCommand => write!(f, "execute_command"),
+            ToolType::SearchFileContentWithRegex => write!(f, "search_files"),
+            ToolType::ListFiles => write!(f, "list_files"),
+            ToolType::AskFollowupQuestions => write!(f, "ask_followup_question"),
+            ToolType::AttemptCompletion => write!(f, "attempt_completion"),
+            ToolType::RepoMapGeneration => write!(f, "repo_map_generation"),
             ToolType::SubProcessSpawnedPendingOutput => {
                 write!(f, "Sub process spawned pending output")
             }
-            ToolType::TestRunner => write!(f, "Test runner"),
+            ToolType::TestRunner => write!(f, "test_runner"),
+            ToolType::RewardGeneration => write!(f, "reward_generation"),
+            ToolType::FeedbackGeneration => write!(f, "feedback_generation"),
         }
     }
 }
@@ -287,6 +293,18 @@ impl ToolRewardScale {
             maximum,
             description: description.to_owned(),
         }
+    }
+
+    pub fn minimum(&self) -> i32 {
+        self.minimum
+    }
+
+    pub fn maximum(&self) -> i32 {
+        self.maximum
+    }
+
+    pub fn description(&self) -> &str {
+        &self.description
     }
 }
 

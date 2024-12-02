@@ -32,6 +32,7 @@ use super::{
     },
     editor::apply::EditorApplyRequest,
     errors::ToolError,
+    feedback::feedback::FeedbackGenerationRequest,
     file::file_finder::ImportantFilesFinderQuery,
     filtering::broker::{
         CodeToEditFilterRequest, CodeToEditSymbolRequest, CodeToProbeSubSymbolRequest,
@@ -65,6 +66,7 @@ use super::{
     ref_filter::ref_filter::ReferenceFilterRequest,
     repo_map::generator::{RepoMapGeneratorRequest, RepoMapGeneratorRequestPartial},
     rerank::base::ReRankEntriesForBroker,
+    reward::client::RewardGenerationRequest,
     search::big_search::BigSearchRequest,
     session::{
         ask_followup_question::AskFollowupQuestionsRequest,
@@ -242,6 +244,10 @@ pub enum ToolInput {
     SubProcessSpawnedPendingOutput(SubProcessSpawnedPendingOutputRequest),
     // Run tests
     RunTests(TestRunnerRequest),
+    // Reward generation
+    RewardGeneration(RewardGenerationRequest),
+    // Feedback generation
+    FeedbackGeneration(FeedbackGenerationRequest),
 }
 
 impl ToolInput {
@@ -328,6 +334,24 @@ impl ToolInput {
                 ToolType::SubProcessSpawnedPendingOutput
             }
             ToolInput::RunTests(_) => ToolType::TestRunner,
+            ToolInput::RewardGeneration(_) => ToolType::RewardGeneration,
+            ToolInput::FeedbackGeneration(_) => ToolType::FeedbackGeneration,
+        }
+    }
+
+    pub fn is_feedback_generation_request(self) -> Result<FeedbackGenerationRequest, ToolError> {
+        if let ToolInput::FeedbackGeneration(request) = self {
+            Ok(request)
+        } else {
+            Err(ToolError::WrongToolInput(ToolType::FeedbackGeneration))
+        }
+    }
+
+    pub fn is_reward_generation_request(self) -> Result<RewardGenerationRequest, ToolError> {
+        if let ToolInput::RewardGeneration(request) = self {
+            Ok(request)
+        } else {
+            Err(ToolError::WrongToolInput(ToolType::RewardGeneration))
         }
     }
 

@@ -297,6 +297,8 @@ impl VariableInformation {
             variable_type: VariableType::Selection,
             content: active_window.visible_range_content.to_owned(),
             language: active_window.language.to_owned(),
+            patch: None,
+            initial_patch: None,
         }
     }
 }

@@ -26,6 +26,7 @@ use super::{
         should_edit::ShouldEditCodeSymbolResponse,
     },
     editor::apply::EditorApplyResponse,
+    feedback::feedback::FeedbackGenerationResponse,
     file::important::FileImportantResponse,
     filtering::broker::{
         CodeToEditFilterResponse, CodeToEditSymbolResponse, CodeToProbeFilterResponse,
@@ -54,6 +55,7 @@ use super::{
     plan::{generator::StepGeneratorResponse, reasoning::ReasoningResponse},
     repo_map::generator::RepoMapGeneratorResponse,
     rerank::base::ReRankEntriesForBroker,
+    reward::client::RewardGenerationResponse,
     session::{
         ask_followup_question::AskFollowupQuestionsResponse,
         attempt_completion::AttemptCompletionClientResponse, chat::SessionChatClientResponse,
@@ -220,6 +222,10 @@ pub enum ToolOutput {
     SubProcessSpawnedPendingOutput(SubProcessSpanwedPendingOutputResponse),
     // Test runner
     TestRunner(TestRunnerResponse),
+    // Reward generation
+    RewardGeneration(RewardGenerationResponse),
+    // Feedback generation
+    FeedbackGeneration(FeedbackGenerationResponse),
 }
 
 impl ToolOutput {
@@ -864,6 +870,20 @@ impl ToolOutput {
     ) -> Option<SubProcessSpanwedPendingOutputResponse> {
         match self {
             ToolOutput::SubProcessSpawnedPendingOutput(response) => Some(response),
+            _ => None,
+        }
+    }
+
+    pub fn get_reward_generation_response(self) -> Option<RewardGenerationResponse> {
+        match self {
+            ToolOutput::RewardGeneration(response) => Some(response),
+            _ => None,
+        }
+    }
+
+    pub fn get_feedback_generation_response(self) -> Option<FeedbackGenerationResponse> {
+        match self {
+            ToolOutput::FeedbackGeneration(response) => Some(response),
             _ => None,
         }
     }

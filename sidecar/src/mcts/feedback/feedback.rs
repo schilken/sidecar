@@ -270,7 +270,7 @@ This attempt was identical to a previous one. Repeating this exact approach woul
 
         // adding sibling analysis
         let sibling_analysis = format!(
-            r#"# Hypothethical Attempts
+            r#"# Hypothetical Attempts
 
 {sibling_analysis}"#
         );

@@ -1400,11 +1400,12 @@ impl SearchTree {
 
     fn print_tree(&self) {
         println!("\nCurrent Tree State:");
-        self.print_node(self.root_node_index, 0, "", true);
+        // Start by printing the root node without any prefix
+        self.print_node(self.root_node_index, "", true, true);
         println!(); // Extra line for readability
     }
 
-    fn print_node(&self, node_index: usize, depth: usize, prefix: &str, is_root: bool) {
+    fn print_node(&self, node_index: usize, prefix: &str, is_last: bool, is_root: bool) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
             None => return,
@@ -1433,17 +1434,18 @@ impl SearchTree {
                 }
             });
 
-        // Print the current node
         if is_root {
+            // Print the root node without any prefix or branch symbols
             println!(
-                "Root {} (v:{}, val:{:.2}, r:{}) {}",
+                "Node {} (v:{}, val:{:.2}, r:{}) {}",
                 node_index, visits, value, reward, action_str
             );
         } else {
+            // Print the current node with prefix and branch symbols
             println!(
-                "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
-                "  ".repeat(depth),
+                "{}{} Node {} (v:{}, val:{:.2}, r:{}) {}",
                 prefix,
+                if is_last { "└──" } else { "├──" },
                 node_index,
                 visits,
                 value,
@@ -1452,11 +1454,19 @@ impl SearchTree {
             );
         }
 
+        // Prepare the new prefix for the next level
+        let new_prefix = if is_root {
+            "".to_owned() // No prefix for root's children
+        } else {
+            format!("{}{}", prefix, if is_last { "    " } else { "│   " })
+        };
+
         // Print all children
         if let Some(children) = self.node_to_children.get(&node_index) {
+            let child_count = children.len();
             for (i, child_index) in children.iter().enumerate() {
-                let new_prefix = if i == children.len() - 1 { "" } else { "│ " };
-                self.print_node(*child_index, depth + 1, new_prefix, false);
+                let is_last_child = i == child_count - 1;
+                self.print_node(*child_index, &new_prefix, is_last_child, false);
             }
         }
     }

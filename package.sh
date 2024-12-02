@@ -9,3 +9,8 @@
 # interetsed in, right now we will lock it to just mac
 cargo build --bin webserver --release
 zip -r sidecar target/release/webserver
+
+cargo build --bin state
+
+output=$(./target/debug/state)
+echo $output

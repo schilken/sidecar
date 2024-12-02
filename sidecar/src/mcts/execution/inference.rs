@@ -467,7 +467,7 @@ This is part of the file which might not contain the method in full, if thats th
                     let request_object = serde_json::json!({
                         "original_content": original_content,
                         "modified_content": updated_code,
-                        "fs_file_path": fs_file_path,
+                        "fs_file_path": fs_file_path.to_owned(),
                     });
                     let response = client
                         .post(message_properties.editor_url() + "/diff_generator")
@@ -486,7 +486,8 @@ This is part of the file which might not contain the method in full, if thats th
                         r#"I performed the edits which you asked me to, and here is the patch with the changes
 {generated_diff}"#
                     );
-                    Ok(ActionObservation::new(message.to_owned(), message, false))
+                    Ok(ActionObservation::new(message.to_owned(), message, false)
+                        .file_content_updated(fs_file_path, updated_code))
                 }
             }
             ToolInputPartial::LSPDiagnostics(_) => {

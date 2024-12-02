@@ -550,7 +550,7 @@ impl UserContext {
             .any(|variable| variable.variable_type == VariableType::Selection)
     }
 
-    pub fn update_file_content(mut self, fs_file_path: &str, updated_content: &str) -> Self {
+    pub fn update_file_content(&mut self, fs_file_path: &str, updated_content: &str) {
         self.variables = self
             .variables
             .to_vec()
@@ -568,7 +568,6 @@ impl UserContext {
                 }
             })
             .collect();
-        self
     }
 
     // we want to carry over the variable information from previous steps, we can

@@ -433,7 +433,7 @@ impl SearchTree {
             }
 
             let expandable_nodes = self.expandable_node(self.root_node_index);
-            if !expandable_nodes.is_empty() {
+            if expandable_nodes.is_empty() {
                 return true;
             }
             false
@@ -836,7 +836,7 @@ impl SearchTree {
             .map(|children| children.into_iter().collect::<Vec<_>>())
             .unwrap_or_default()
             .len();
-        children_len < node.max_expansions
+        children_len >= node.max_expansions
     }
 
     fn is_node_duplicate(&self, node_index: usize) -> bool {
@@ -859,7 +859,6 @@ impl SearchTree {
         }
         let node = node.expect("if let None to hold");
 
-        // we can expand on the current node
         if !node.is_terminal_observation()
             && !self.is_node_fully_expanded(node_index)
             && !self.is_node_duplicate(node_index)
@@ -881,7 +880,9 @@ impl SearchTree {
     /// This only allows nodes to be selected within the max_depth limit
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
+        println!("running_select");
         let expandable_nodes = self.expandable_node(self.root_node_index);
+        println!("expandable_nodes::({:?})", expandable_nodes);
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {
             let node = self.get_node(expandable_node_index);
@@ -894,6 +895,8 @@ impl SearchTree {
                 filtered_nodes.push(node.index);
             }
         }
+
+        println!("filtered_nodes::({:?})", &filtered_nodes);
 
         if filtered_nodes.is_empty() {
             return None;
@@ -1246,6 +1249,8 @@ impl SearchTree {
                 break;
             }
 
+            println!("running::select");
+
             // select the node for running search
             let selected_node = self.select();
             if let None = selected_node {
@@ -1253,6 +1258,7 @@ impl SearchTree {
             }
             let selected_node = selected_node.expect("if let None to hold");
 
+            println!("running::expand");
             // expand the node
             let new_node = self.expand(selected_node);
             if let None = new_node {

@@ -90,7 +90,7 @@ impl Tool for FeedbackClientGenerator {
                         "root_id".to_owned(),
                         message_properties.root_request_id().to_owned(),
                     ),
-                    ("event_type".to_owned(), "reward_generation".to_owned()),
+                    ("event_type".to_owned(), "feedback_generation".to_owned()),
                 ]
                 .into_iter()
                 .collect(),

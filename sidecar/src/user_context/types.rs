@@ -142,7 +142,7 @@ impl VariableInformation {
         self
     }
 
-    fn base_content(&self) -> String {
+    pub fn base_content(&self) -> String {
         if let Some(initial_patch) = self.initial_patch.as_ref() {
             let patch = diffy::Patch::from_str(&initial_patch);
             diffy::apply(&self.content, &patch.expect("Patch generation should work"))

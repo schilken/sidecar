@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    process::Stdio,
     sync::Arc,
 };
 
@@ -1197,6 +1198,48 @@ impl SearchTree {
         }
     }
 
+    /// Rests the file system to the current node since we are working on a lot
+    /// of different nodes at the same time and jumping around
+    async fn reset_file_system(&self, node_index: usize) {
+        // - restore the file system to the original state over here
+        // git add . && git stash
+        // - apply the file content which this node has as part of the base_content in the variables
+        // - profit
+        let node = self.get_node(node_index);
+        if let None = node {
+            return;
+        }
+        let node = node.expect("if let None above to hold");
+
+        // we run the git-command manually over here
+        tokio::process::Command::new("git")
+            .args(&["add", "."])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .expect("to work");
+        tokio::process::Command::new("git")
+            .arg("stash")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+            .expect("to work");
+
+        // now update the file system to the current node
+        for file_variable in node
+            .user_context()
+            .variables
+            .iter()
+            .filter(|variable| variable.is_file())
+        {
+            let current_content = file_variable.base_content();
+            let fs_file_path = file_variable.fs_file_path.to_owned();
+            let _ = tokio::fs::write(fs_file_path, current_content).await;
+        }
+    }
+
     pub async fn run_search(&mut self, message_properties: SymbolEventMessageProperties) {
         loop {
             if self.is_finished() {
@@ -1216,6 +1259,8 @@ impl SearchTree {
                 break;
             }
             let new_node = new_node.expect("if let None to hold");
+            // reset the file system
+            self.reset_file_system(new_node).await;
             // generate feedback for the new node
             self.generate_feedback_for_node(new_node, message_properties.clone())
                 .await;

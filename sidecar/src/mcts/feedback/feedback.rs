@@ -19,7 +19,7 @@ use super::error::FeedbackError;
 
 pub struct FeedbackToNode {
     // Analysis of the current task we are on and the different trajectories we have explored
-    analysis: String,
+    _analysis: String,
     // Direct feedback to the AI agent
     feedback: String,
 }
@@ -84,7 +84,7 @@ impl FeedbackGenerator {
             .ok_or(FeedbackError::RootNotFound)?;
 
         Ok(Some(FeedbackToNode {
-            analysis: feedback.analysis().to_owned(),
+            _analysis: feedback.analysis().to_owned(),
             feedback: feedback.feedback().to_owned(),
         }))
     }

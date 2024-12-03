@@ -114,8 +114,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     ));
 
-    let symbol_tracker = Arc::new(SymbolTrackerInline::new(editor_parsing.clone()));
-
     let tool_box = Arc::new(ToolBox::new(tool_broker, symbol_broker, editor_parsing));
 
     let editor_url = args.editor_url.to_owned();
@@ -142,20 +140,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     println!("session_id:{}", &session_id);
-
-    // Creates the unique path for the session
-    let session_path = default_index_dir().join("session");
-    // check if the plan_storage_path_exists
-    if tokio::fs::metadata(&session_path).await.is_err() {
-        tokio::fs::create_dir(&session_path)
-            .await
-            .expect("directory creation to not fail");
-    }
-    let session_path = session_path.join(session_id.to_owned());
-    let storage_path = session_path
-        .to_str()
-        .expect("path conversion to work on all platforms")
-        .to_owned();
 
     let initial_exchange_id = 0;
 

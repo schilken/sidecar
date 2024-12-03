@@ -333,7 +333,7 @@ impl Tool for SessionChatClient {
         "".to_owned()
     }
 
-    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
         vec![]
     }
 

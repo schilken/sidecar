@@ -74,11 +74,8 @@ impl ActionObservation {
         self.metadata
             .iter()
             .filter_map(|(key, value)| {
-                if let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key {
-                    Some((fs_file_path.to_owned(), value.to_owned()))
-                } else {
-                    None
-                }
+                let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key;
+                Some((fs_file_path.to_owned(), value.to_owned()))
             })
             .collect()
     }
@@ -504,14 +501,6 @@ impl SearchTree {
                     .iter()
                     .filter_map(move |idx| self.index_to_node.get(idx))
             })
-    }
-
-    fn get_root<'a>(&'a self, node: &'a ActionNode) -> &'a ActionNode {
-        let mut current_node = node;
-        while let Some(parent_node) = self.parent(current_node) {
-            current_node = parent_node;
-        }
-        current_node
     }
 
     pub fn get_sibling_nodes(&self, node_index: usize) -> Vec<&ActionNode> {

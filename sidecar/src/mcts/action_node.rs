@@ -1238,6 +1238,8 @@ impl SearchTree {
                         .generate_reward(nodes_trajectory, &self, message_properties.clone())
                         .await;
 
+                    println!("rewared_for_node:({node_index})::reward({:?})", &reward);
+
                     let node = self.get_node_mut(node_index);
                     if let Some(node) = node {
                         match reward {

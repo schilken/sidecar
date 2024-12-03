@@ -7,7 +7,10 @@ use crate::{agentic::tool::r#type::ToolType, mcts::action_node::SearchTree};
 
 use super::uct_score::UCTScore;
 
+use serde::{Deserialize, Serialize};
+
 /// Parameters for configuring the behavior of the Selector in UCT score calculations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Selector {
     /// Weight factor for the exploitation term in the UCT score calculation.
     /// Higher values favor exploitation over exploration.
@@ -60,6 +63,7 @@ pub struct Selector {
     expect_correction_bonus: f32,
 
     /// List of action types to check for when calculating the high-value bad children bonus.
+    #[serde(skip)]
     check_for_bad_child_actions: Vec<ToolType>,
 
     /// Weight factor for the diversity bonus.

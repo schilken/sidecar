@@ -1,4 +1,5 @@
 use llm_client::clients::types::LLMClientMessage;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     agentic::{
@@ -15,7 +16,7 @@ use crate::{
 use super::error::RewardError;
 
 /// The reward for execution on an action node and the value generated out of it
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Reward {
     /// An explanation and the reasoning behind your decision.
     explanation: String,

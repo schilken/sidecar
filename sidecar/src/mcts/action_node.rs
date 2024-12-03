@@ -22,19 +22,22 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
-#[derive(Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq, Serialize, Deserialize,
+)]
 pub enum ActionObservationMetadataKey {
     FileContentUpdated(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
-    /// The metadata here contains extra information about the action which have been
-    /// performed and any trace information which we want to keep
+    #[serde(skip)]
     metadata: HashMap<ActionObservationMetadataKey, String>,
 }
 
@@ -95,7 +98,7 @@ impl ActionObservation {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ActionToolParameters {
     Errored(String),
     Tool(ToolInputPartial),
@@ -129,7 +132,7 @@ impl ActionToolParameters {
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActionNode {
     index: usize,
     action: Option<ActionToolParameters>,
@@ -273,9 +276,13 @@ impl ActionNode {
     }
 }
 
+#[derive(Serialize)]
 pub struct SearchTree {
+    #[serde(serialize_with = "serialize_usize_map")]
     pub index_to_node: HashMap<usize, ActionNode>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_children: HashMap<usize, Vec<usize>>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_parent: HashMap<usize, usize>,
     /// the maximum expansions allowed
     max_expansions: usize,
@@ -293,14 +300,17 @@ pub struct SearchTree {
     min_finished_nodes: Option<usize>,
 
     selector: Selector,
+    #[serde(skip)]
     tools: Vec<ToolType>,
     // the working directory
     root_directory: String,
     // the LLM Client
+    #[serde(skip)]
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
     // The tool box
+    #[serde(skip)]
     tool_box: Arc<ToolBox>,
 }
 
@@ -1549,4 +1559,30 @@ impl SearchTree {
             println!("Node {}: {:?}", parent_index, children_indices);
         }
     }
+
+    /// use to debug the graph
+    fn _print_serialised_graph(&self) {
+        let graph_serialised = match serde_json::to_string(&self) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                eprintln!("mcts::select::Failed to serialize graph: {}", err);
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        println!("{}", graph_serialised);
+    }
+}
+
+fn serialize_usize_map<S, T>(map: &HashMap<usize, T>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: serde::Serialize,
+{
+    use serde::ser::SerializeMap;
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        map_serializer.serialize_entry(&k.to_string(), v)?;
+    }
+    map_serializer.end()
 }

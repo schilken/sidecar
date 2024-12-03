@@ -11,6 +11,7 @@ use crate::{
         symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
         tool::{input::ToolInputPartial, r#type::ToolType},
     },
+    mcts::decider::decider::Decider,
     user_context::types::UserContext,
 };
 
@@ -200,8 +201,13 @@ impl ActionNode {
         false
     }
 
-    fn is_finished(&self) -> bool {
-        false
+    /// Checks if the node is finished by looking for the attempt completion tool
+    pub fn is_finished(&self) -> bool {
+        if let Some(action) = self.action() {
+            matches!(action.to_tool_type(), Some(ToolType::AttemptCompletion))
+        } else {
+            false
+        }
     }
 
     fn is_terminal_observation(&self) -> bool {
@@ -225,6 +231,30 @@ impl ActionNode {
         self.action = None;
     }
 
+    /// Generates th patch from the git(main) for the current node
+    /// It includes all the changes which we have performed
+    pub fn git_diff_from_main(&self) -> String {
+        self.user_context
+            .variables
+            .to_vec()
+            .into_iter()
+            .filter(|variable| variable.is_file())
+            .filter_map(|variable| {
+                if let Some(git_patch) = variable.patch_from_root() {
+                    Some(format!(
+                        r#"Changes in {}:
+{}"#,
+                        variable.fs_file_path.to_owned(),
+                        git_patch
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     pub fn user_context(&self) -> &UserContext {
         &self.user_context
     }
@@ -236,6 +266,10 @@ impl ActionNode {
     pub fn update_user_context(mut self, user_context: UserContext) -> Self {
         self.user_context = user_context;
         self
+    }
+
+    pub fn reward_value(&self) -> f32 {
+        self.reward_value
     }
 }
 
@@ -1377,8 +1411,26 @@ impl SearchTree {
             );
         }
         println!("=== Search Complete ===\n");
+
         // Print final tree state
         self.print_tree();
+
+        println!("=== Deciding answer ===\n");
+        let best_node = Decider::new()
+            .decide(self.finished_nodes(), &self, message_properties.clone())
+            .await;
+
+        match best_node {
+            Ok(best_node) => {
+                // now update the state of the repo to this node and call it a day
+                // we are done
+                println!("Best answer selected: Node {}", best_node);
+                self.reset_file_system(best_node).await;
+            }
+            Err(e) => {
+                println!("Deciding answer failed: {}", e.to_string())
+            }
+        }
     }
 
     // Add this helper method for logging tree state

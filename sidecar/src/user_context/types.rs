@@ -142,7 +142,6 @@ impl VariableInformation {
         self
     }
 
-    // TODO(skcd): https://gist.github.com/sartoshi-foot-dao/5c06750e3ac5761dc3d1132b5af1833b
     pub fn base_content(&self) -> String {
         if let Some(initial_patch) = self.initial_patch.as_ref() {
             // println!("content: {}", self.content);
@@ -151,7 +150,16 @@ impl VariableInformation {
             let parsed_patch =
                 diffy::Patch::from_str(&initial_patch).expect("Patch generation should work");
             // println!("patch: {}", &parsed_patch);
-            diffy::apply(&self.content, &parsed_patch).expect("diffy::apply to work")
+            match diffy::apply(&self.content, &parsed_patch) {
+                Ok(content) => content,
+                Err(e) => {
+                    eprintln!("Error applying patch: {}", e);
+                    // print parsed patch
+                    println!("parsed_patch: {}", &parsed_patch);
+                    println!("Using content as base content");
+                    self.content.to_owned() // use content as base content, avoid panic
+                }
+            }
         } else {
             // println!("No initial patch found");
             self.content.to_owned()

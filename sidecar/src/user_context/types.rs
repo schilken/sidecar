@@ -700,10 +700,6 @@ impl UserContext {
             })
             .collect()
     }
-
-    pub fn updated_file_delta(&self, fs_file_path: &str) -> Option<String> {
-        None
-    }
 }
 
 #[async_recursion]

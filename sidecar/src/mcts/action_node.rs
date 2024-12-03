@@ -22,7 +22,6 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
-use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -994,16 +993,6 @@ impl SearchTree {
     /// This only allows nodes to be selected within the max_depth limit
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
-        let graph_serialised = match serde_json::to_string(&self) {
-            Ok(serialized) => serialized,
-            Err(err) => {
-                eprintln!("mcts::select::Failed to serialize graph: {}", err);
-                String::from("Failed to serialize graph")
-            }
-        };
-
-        println!("{}", graph_serialised);
-
         let expandable_nodes = self.expandable_node(self.root_node_index);
         println!(
             "Selection phase - {} expandable nodes",
@@ -1569,6 +1558,19 @@ impl SearchTree {
         for (parent_index, children_indices) in &self.node_to_children {
             println!("Node {}: {:?}", parent_index, children_indices);
         }
+    }
+
+    /// use to debug the graph
+    fn _print_serialised_graph(&self) {
+        let graph_serialised = match serde_json::to_string(&self) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                eprintln!("mcts::select::Failed to serialize graph: {}", err);
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        println!("{}", graph_serialised);
     }
 }
 

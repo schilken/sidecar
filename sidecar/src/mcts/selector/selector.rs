@@ -270,6 +270,23 @@ impl Selector {
     /// This method combines various components to create a comprehensive score for node selection,
     /// balancing exploration and exploitation while considering node-specific factors.
     pub fn uct_score(&self, node_index: usize, graph: &SearchTree) -> UCTScore {
+        let graph_serialised = match serde_json::to_string(&graph) {
+            Ok(serialized) => {
+                println!("mcts::selector::uct_score::serialised graph");
+                serialized
+            }
+            Err(err) => {
+                eprintln!(
+                    "mcts::selector::uct_score::Failed to serialize graph: {}",
+                    err
+                );
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        let log_file_path = format!("./logs/mcts_graphs/graph_for_node_{}.json", node_index);
+        let _ = std::fs::write(log_file_path, graph_serialised);
+
         let node_visits = graph.node_visits(node_index);
         if node_visits == 0.0 {
             return UCTScore::final_score(f32::MAX);

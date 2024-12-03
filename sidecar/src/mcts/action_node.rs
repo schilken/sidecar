@@ -995,29 +995,14 @@ impl SearchTree {
     /// and sorts the nodes by the UTC score
     pub fn select(&mut self) -> Option<usize> {
         let graph_serialised = match serde_json::to_string(&self) {
-            Ok(serialized) => {
-                println!("mcts::select::serialised graph");
-                // Create a timestamp for unique filename
-                let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
-                let log_path = format!(
-                    "/Users/zi/codestory/sidecar/sidecar/logs/mcts_graph_{}.json",
-                    timestamp
-                );
-
-                // Write to file system
-                if let Err(e) = std::fs::write(&log_path, &serialized) {
-                    eprintln!("Failed to write graph to file: {}", e);
-                } else {
-                    println!("Graph written to: {}", log_path);
-                }
-
-                serialized
-            }
+            Ok(serialized) => serialized,
             Err(err) => {
                 eprintln!("mcts::select::Failed to serialize graph: {}", err);
                 String::from("Failed to serialize graph")
             }
         };
+
+        println!("{}", graph_serialised);
 
         let expandable_nodes = self.expandable_node(self.root_node_index);
         println!(

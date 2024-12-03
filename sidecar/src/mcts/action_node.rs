@@ -1379,9 +1379,6 @@ impl SearchTree {
             self.save_serialised_graph(log_dir, &message_properties.root_request_id())
                 .await;
 
-            // Log node_to_children for debugging
-            self.log_node_to_children();
-
             if self.is_finished() {
                 println!("Search finished - termination condition met");
                 break;
@@ -1558,7 +1555,7 @@ impl SearchTree {
     }
 
     // Add this helper method for logging node_to_children
-    fn log_node_to_children(&self) {
+    fn _log_node_to_children(&self) {
         println!("Current node_to_children mapping:");
         for (parent_index, children_indices) in &self.node_to_children {
             println!("Node {}: {:?}", parent_index, children_indices);
@@ -1593,12 +1590,7 @@ impl SearchTree {
             return;
         }
 
-        let log_file_name = format!(
-            "{}/{}-{}.json",
-            log_dir,
-            request_id,
-            self.node_to_children.len()
-        );
+        let log_file_name = format!("{}/{}.json", log_dir, request_id);
 
         match tokio::fs::write(&log_file_name, graph_serialised).await {
             Ok(_) => {

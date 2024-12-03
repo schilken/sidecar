@@ -1484,7 +1484,7 @@ impl SearchTree {
         let mut state_params = Vec::new();
         if let Some(action) = &node.action {
             match action {
-                ActionToolParameters::Errored(err) => state_params.push(format!("Error: {}", err)),
+                ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
                 ActionToolParameters::Tool(tool) => {
                     state_params.push(format!("{}", tool.to_tool_type()))
                 }

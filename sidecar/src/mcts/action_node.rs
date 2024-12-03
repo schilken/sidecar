@@ -312,6 +312,7 @@ pub struct SearchTree {
     // The tool box
     #[serde(skip)]
     tool_box: Arc<ToolBox>,
+    log_directory: String,
 }
 
 impl SearchTree {
@@ -329,6 +330,7 @@ impl SearchTree {
         tools: Vec<ToolType>,
         tool_box: Arc<ToolBox>,
         llm_client: Arc<LLMBroker>,
+        log_directory: String,
     ) -> Self {
         let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
@@ -348,6 +350,7 @@ impl SearchTree {
             root_directory,
             llm_client,
             repo_name,
+            log_directory,
         }
     }
     pub fn root(&self) -> Option<&ActionNode> {
@@ -1375,8 +1378,7 @@ impl SearchTree {
             self.print_tree();
 
             // change as necessary
-            let log_dir = "/Users/zi/codestory/sidecar/mcts_logs";
-            self.save_serialised_graph(log_dir, &message_properties.root_request_id())
+            self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
                 .await;
 
             if self.is_finished() {

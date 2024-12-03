@@ -51,6 +51,10 @@ struct CliArgs {
 
     #[arg(long)]
     repo_name: String,
+
+    /// Directory to dump all the logs into
+    #[arg(long)]
+    log_directory: String,
 }
 
 /// Define the SWEbenchInstance struct for serialization
@@ -120,6 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_id = args.run_id.to_owned();
     let repo_name = args.repo_name.to_owned();
     let anthropic_api_key = args.anthropic_api_key.to_owned();
+    let log_directory = args.log_directory.to_owned();
     let input_content = tokio::fs::read(input_path).await.expect("path content");
     let input_parts: InputParts =
         serde_json::from_slice(&input_content).expect("Parse the serde json");
@@ -211,6 +216,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ], // tools
         tool_box,                               // tool_box
         llm_broker,                             // llm_client
+        log_directory,                          // log directory
     );
 
     // Run the search

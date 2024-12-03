@@ -155,7 +155,11 @@ impl VariableInformation {
                 Err(e) => {
                     eprintln!("Error applying patch: {}", e);
                     // print parsed patch
-                    println!("parsed_patch: {}", &parsed_patch);
+                    println!("parsed_patch:\n=====\n{}\n======", &parsed_patch);
+                    println!(
+                        "original content to apply to:\n====\n{}\n========",
+                        &self.content
+                    );
                     println!("Using content as base content");
                     self.content.to_owned() // use content as base content, avoid panic
                 }

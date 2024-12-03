@@ -6,6 +6,7 @@ use crate::chunking::{
 };
 use async_recursion::async_recursion;
 use futures::{stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::helpers::{guess_content, ProbableFileKind};
@@ -336,7 +337,7 @@ impl FileContentValue {
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UserContext {
     pub variables: Vec<VariableInformation>,
     #[serde(default)]

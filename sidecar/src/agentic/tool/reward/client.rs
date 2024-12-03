@@ -175,8 +175,6 @@ impl Tool for RewardClientGenerator {
             )
             .await;
 
-        println!("reward_client::output::({:?})", &response);
-
         match response {
             Ok(response) => {
                 let output = RewardGenerationResponse::parse_output(response)?;

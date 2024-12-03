@@ -153,8 +153,6 @@ impl Tool for FeedbackClientGenerator {
             )
             .await;
 
-        println!("reward_client::output::({:?})", &response);
-
         match response {
             Ok(response) => {
                 let output = FeedbackGenerationResponse::parse_response(response)?;

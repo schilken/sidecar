@@ -133,8 +133,11 @@ impl VariableInformation {
             let final_content =
                 diffy::apply(&base_content, &patch.expect("Patch generation should work"))
                     .expect("diffy::apply to work");
+
+            // the initial patch is always on top of the self.content (which is how
+            // the file looks like at the main checkout of the repo)
             self.initial_patch =
-                Some(diffy::create_patch(&base_content, &final_content).to_string());
+                Some(diffy::create_patch(&self.content, &final_content).to_string());
 
             // reset our patch
             self.patch = None;

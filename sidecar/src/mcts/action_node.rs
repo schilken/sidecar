@@ -1431,6 +1431,10 @@ impl SearchTree {
         // Print final tree state
         self.print_tree();
 
+        // save the tree again at the very end when everything has been updated
+        self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
+            .await;
+
         println!("=== Deciding answer ===\n");
         let best_node = Decider::new()
             .decide(self.finished_nodes(), &self, message_properties.clone())

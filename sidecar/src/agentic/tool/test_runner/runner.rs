@@ -65,7 +65,10 @@ impl Tool for TestRunner {
 
     fn tool_description(&self) -> String {
         r#"### test_runner
-Runs the tests in the provided files"#
+Runs the tests in the provided files
+
+#### Requirements:
+You should verify where the test files are located, only use test_runner tool after you have this information"#
             .to_owned()
     }
 
@@ -89,6 +92,7 @@ path/to/file2.py
             " * Minor, Easily Fixable Failures: Lightly penalize or treat as neutral.",
             " * Foreseeable Failures: Penalize appropriately based on the complexity of the fix.",
             " * Unforeseeable Failures: Penalize very lightly or reward for providing new insights.",
+            " * Backward Compatibility issues: Understand the context in which test cases are failing, if backward compatibility is required then its a big failure, if that is not really the case then the failures can be ignored",
             "Impact of Failures: Consider the overall impact of test failures on the solution's viability.",
             "Iterative Improvement: Encourage fixing minor issues in subsequent iterations.",
             "Explanation Requirement: In your explanation, describe any test failures, their likely causes, and suggest potential next steps.",

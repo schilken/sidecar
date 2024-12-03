@@ -284,8 +284,20 @@ impl Selector {
             }
         };
 
-        let log_file_path = format!("./logs/mcts_graphs/graph_for_node_{}.json", node_index);
-        let _ = std::fs::write(log_file_path, graph_serialised);
+        let log_file_path = format!(".graph_for_node_{}.json", node_index);
+
+        match std::fs::write(&log_file_path, graph_serialised) {
+            Ok(_) => println!(
+                "mcts::selector::uct_score::wrote graph to file: {}",
+                std::fs::canonicalize(&log_file_path)
+                    .unwrap_or_default()
+                    .display()
+            ),
+            Err(err) => eprintln!(
+                "mcts::selector::uct_score::Failed to write graph to file: {}",
+                err
+            ),
+        }
 
         let node_visits = graph.node_visits(node_index);
         if node_visits == 0.0 {

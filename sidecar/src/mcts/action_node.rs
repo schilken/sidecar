@@ -22,6 +22,7 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
+use serde::ser::SerializeMap;
 use serde::{Deserialize, Serialize};
 
 #[derive(
@@ -37,8 +38,7 @@ pub struct ActionObservation {
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
-    /// The metadata here contains extra information about the action which have been
-    /// performed and any trace information which we want to keep
+    #[serde(serialize_with = "serialize_metadata_map")]
     metadata: HashMap<ActionObservationMetadataKey, String>,
 }
 
@@ -279,8 +279,11 @@ impl ActionNode {
 
 #[derive(Serialize)]
 pub struct SearchTree {
+    #[serde(serialize_with = "serialize_usize_map")]
     pub index_to_node: HashMap<usize, ActionNode>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_children: HashMap<usize, Vec<usize>>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_parent: HashMap<usize, usize>,
     /// the maximum expansions allowed
     max_expansions: usize,
@@ -298,6 +301,7 @@ pub struct SearchTree {
     min_finished_nodes: Option<usize>,
 
     selector: Selector,
+    #[serde(skip)]
     tools: Vec<ToolType>,
     // the working directory
     root_directory: String,
@@ -1556,4 +1560,41 @@ impl SearchTree {
             println!("Node {}: {:?}", parent_index, children_indices);
         }
     }
+}
+
+// Add these serialization helper functions (can be at the bottom of the file)
+fn serialize_usize_map<S, T>(map: &HashMap<usize, T>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: serde::Serialize,
+{
+    use serde::ser::SerializeMap;
+    println!("mcts::action_node::serialize_usize_map::serialising_usize_map");
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        println!(
+            "mcts::action_node::serialize_usize_map::serialising_usize_map::entry: {:?}",
+            k
+        );
+        map_serializer.serialize_entry(&k.to_string(), v)?;
+    }
+    map_serializer.end()
+}
+
+fn serialize_metadata_map<S>(
+    map: &HashMap<ActionObservationMetadataKey, String>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        println!(
+            "mcts::action_node::serialize_metadata_map::serialising_metadata_map::entry: {:?}",
+            k
+        );
+        map_serializer.serialize_entry(k, v)?;
+    }
+    map_serializer.end()
 }

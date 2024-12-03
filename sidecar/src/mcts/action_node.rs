@@ -987,8 +987,13 @@ impl SearchTree {
     pub fn select(&mut self) -> Option<usize> {
         let expandable_nodes = self.expandable_node(self.root_node_index);
         println!(
-            "Selection phase - {} expandable nodes",
-            expandable_nodes.len()
+            "Selection phase::expandable nodes - {}",
+            expandable_nodes
+                .to_vec()
+                .into_iter()
+                .map(|node| node.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
         );
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {

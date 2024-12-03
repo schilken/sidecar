@@ -280,8 +280,8 @@ This attempt was identical to a previous one. Repeating this exact approach woul
             format!(
                 r#"{sibling_analysis}
 
-**WARNING: FINISH ACTION HAS ALREADY BEEN ATTEMPTED!**
-- Trying to finish again would be ineffective
+**WARNING: ATTEMPT COMPLETION HAS ALREADY BEEN ATTEMPTED!**
+- Trying to attemp_completion again would be ineffective
 - Focus on exploring alternative solutions instead"#
             )
         } else {

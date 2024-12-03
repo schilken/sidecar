@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    fs::File,
     process::Stdio,
     sync::Arc,
 };
@@ -1374,6 +1375,11 @@ impl SearchTree {
             // Add tree visualization after each iteration
             self.print_tree();
 
+            // change as necessary
+            let log_dir = "/Users/zi/codestory/sidecar/mcts_logs";
+            self.save_serialised_graph(log_dir, &message_properties.root_request_id())
+                .await;
+
             // Log node_to_children for debugging
             self.log_node_to_children();
 
@@ -1571,6 +1577,42 @@ impl SearchTree {
         };
 
         println!("{}", graph_serialised);
+    }
+
+    async fn save_serialised_graph(&self, log_dir: &str, request_id: &str) {
+        let graph_serialised = match serde_json::to_string(&self) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                eprintln!("mcts::select::Failed to serialize graph: {}", err);
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        // Create directory if it doesn't exist
+        if let Err(err) = tokio::fs::create_dir_all(log_dir).await {
+            eprintln!("Failed to create log directory: {}", err);
+            return;
+        }
+
+        let log_file_name = format!(
+            "{}/{}-{}.json",
+            log_dir,
+            request_id,
+            self.node_to_children.len()
+        );
+
+        match tokio::fs::write(&log_file_name, graph_serialised).await {
+            Ok(_) => {
+                println!(
+                    "mcts::action_node::save_serialised_graph::Saved graph to {}",
+                    log_file_name
+                );
+            }
+            Err(err) => eprintln!(
+                "mcts::action_node::save_serialised_graph::Failed to save graph: {}",
+                err
+            ),
+        }
     }
 }
 

@@ -1592,7 +1592,7 @@ impl SearchTree {
             return;
         }
 
-        let log_file_name = format!("{}/{}.json", log_dir, request_id);
+        let log_file_name = format!("{}/mcts-{}.json", log_dir, request_id);
 
         match tokio::fs::write(&log_file_name, graph_serialised).await {
             Ok(_) => {

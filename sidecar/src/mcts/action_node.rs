@@ -1331,8 +1331,9 @@ impl SearchTree {
         }
         let node = node.expect("if let None above to hold");
 
-        // we run the git-command manually over here
-        let output = tokio::process::Command::new("git")
+        // we run the git-command manually over here in the working directory for
+        // the test repo
+        let _output = tokio::process::Command::new("git")
             .args(&["add", "."])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1340,11 +1341,7 @@ impl SearchTree {
             .output()
             .await
             .expect("to work");
-        println!(
-            "[git add .]:\n===\n{:?}\n===\n",
-            String::from_utf8(output.stdout)
-        );
-        let output = tokio::process::Command::new("git")
+        let _output = tokio::process::Command::new("git")
             .arg("stash")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -1352,10 +1349,6 @@ impl SearchTree {
             .output()
             .await
             .expect("to work");
-        println!(
-            "[git stash]:\n===\n{:?}\n===\n",
-            String::from_utf8(output.stdout)
-        );
 
         // now update the file system to the current node
         for file_variable in node

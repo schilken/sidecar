@@ -293,6 +293,10 @@ Always include the <thinking></thinking> section before using the tool.#"
                 // on individual chunks instead
                 let updated_code = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
                     >= 1300
+                    // lets forgo the idea of being smart, do a simple edit
+                    // if that does not work then we will know we fucked up in our
+                    // observations
+                    && false
                 {
                     let first_part_lines = file_contents
                         .to_owned()
@@ -490,10 +494,14 @@ This is part of the file which might not contain the method in full, if thats th
                     let response: FileEditedResponseStruct =
                         response.json().await.expect("to work");
                     let generated_diff = response.generated_diff;
-                    let message = format!(
-                        r#"I performed the edits which you asked me to, and here is the patch with the changes
-{generated_diff}"#
-                    );
+                    let message = if updated_code == original_content {
+                        "Failed to perform the requested edits".to_owned()
+                    } else {
+                        format!(
+                            r#"I performed the edits which you asked me to, and here is the patch with the changes
+    {generated_diff}"#
+                        )
+                    };
                     Ok(ActionObservation::new(message.to_owned(), message, false)
                         .file_content_updated(fs_file_path, updated_code))
                 }

@@ -22,12 +22,16 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
-#[derive(Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq, Serialize, Deserialize,
+)]
 pub enum ActionObservationMetadataKey {
     FileContentUpdated(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
@@ -95,7 +99,7 @@ impl ActionObservation {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ActionToolParameters {
     Errored(String),
     Tool(ToolInputPartial),
@@ -129,7 +133,7 @@ impl ActionToolParameters {
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActionNode {
     index: usize,
     action: Option<ActionToolParameters>,
@@ -273,6 +277,7 @@ impl ActionNode {
     }
 }
 
+#[derive(Serialize)]
 pub struct SearchTree {
     pub index_to_node: HashMap<usize, ActionNode>,
     node_to_children: HashMap<usize, Vec<usize>>,
@@ -297,10 +302,12 @@ pub struct SearchTree {
     // the working directory
     root_directory: String,
     // the LLM Client
+    #[serde(skip)]
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
     // The tool box
+    #[serde(skip)]
     tool_box: Arc<ToolBox>,
 }
 

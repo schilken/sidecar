@@ -284,7 +284,7 @@ impl Selector {
             }
         };
 
-        let log_file_path = format!(".graph_for_node_{}.json", node_index);
+        let log_file_path = format!("graph_for_node_{}.json", node_index);
 
         match std::fs::write(&log_file_path, graph_serialised) {
             Ok(_) => println!(

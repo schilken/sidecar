@@ -3,15 +3,49 @@ use futures::StreamExt;
 
 use super::types::{
     LLMClient, LLMClientCompletionRequest, LLMClientCompletionResponse,
-    LLMClientCompletionStringRequest, LLMClientError, LLMType,
+    LLMClientCompletionStringRequest, LLMClientError, LLMClientMessageImage, LLMType,
 };
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(rename = "image_url")]
+struct OpenRouterImageSource {
+    url: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[serde(tag = "type")]
+enum OpenRouterRequestMessageType {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "image_url")]
+    Image { image_url: OpenRouterImageSource },
+}
+
+impl OpenRouterRequestMessageType {
+    pub fn text(message: String) -> Self {
+        Self::Text { text: message }
+    }
+
+    pub fn image(image: &LLMClientMessageImage) -> Self {
+        Self::Image {
+            image_url: OpenRouterImageSource {
+                url: format!(
+                    r#"data:{};{},{}"#,
+                    image.media(),
+                    image.r#type(),
+                    image.data()
+                ),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OpenRouterRequestMessage {
     role: String,
-    content: String,
+    content: Vec<OpenRouterRequestMessageType>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -49,7 +83,18 @@ impl OpenRouterRequest {
                 .into_iter()
                 .map(|message| OpenRouterRequestMessage {
                     role: message.role().to_string(),
-                    content: message.content().to_owned(),
+                    content: {
+                        let content = message.content();
+                        let images = message.images();
+                        vec![OpenRouterRequestMessageType::text(content.to_owned())]
+                            .into_iter()
+                            .chain(
+                                images
+                                    .into_iter()
+                                    .map(|image| OpenRouterRequestMessageType::image(image)),
+                            )
+                            .collect()
+                    },
                 })
                 .collect(),
             stream: true,
@@ -108,17 +153,19 @@ impl LLMClient for OpenRouterClient {
             .ok_or(LLMClientError::WrongAPIKeyType)?;
         let auth_key = self.generate_auth_key(api_key)?;
         let request = OpenRouterRequest::from_chat_request(request, model.to_owned());
-        let mut response_stream = self
-            .client
-            .post(base_url)
-            .bearer_auth(auth_key)
-            .header("HTTP-Referer", "https://aide.dev/")
-            .header("X-Title", "aide")
-            .json(&request)
-            .send()
-            .await?
-            .bytes_stream()
-            .eventsource();
+        println!("{:?}", serde_json::to_string(&request));
+        let mut response_stream = dbg!(
+            self.client
+                .post(base_url)
+                .bearer_auth(auth_key)
+                .header("HTTP-Referer", "https://aide.dev/")
+                .header("X-Title", "aide")
+                .json(&request)
+                .send()
+                .await
+        )?
+        .bytes_stream()
+        .eventsource();
         let mut buffered_stream = "".to_owned();
         while let Some(event) = response_stream.next().await {
             match event {

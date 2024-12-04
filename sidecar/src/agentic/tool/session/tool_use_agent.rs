@@ -337,7 +337,7 @@ RULES
 - NEVER end attempt_completion result with a question or request to engage in further conversation! Formulate the end of your result in a way that is final and does not require further input from the user.
 - ALWAYS start your tool use with the <thinking></thinking> section.
 - ONLY USE A SINGLE tool at a time, never use multiple tools in the same response.
-- Each xml tag should be on a new line. This is important because we are parsing the input line by line.
+- VERY IMPORTANT: Each xml tag should be on a new line. This is important because we are parsing the input line by line.
 
 ====
 
@@ -368,6 +368,7 @@ You are NOT ALLOWED to create or edit any of the test-files. You can only run th
 7. ONLY ATTEMPT COMPLETION if you have finished with your round of edits.
 9. TEST files need to be run using the test_runner command, while the reproduce_error script can be run only using the execute_command tool.
 8. Run test files at the very end so you can catch any regressions in your solution. Some test output might be wrong or conflict the Github Issue so carefully understand the test file and the outcome before commiting to making more changes based on the test output.
+10. All the XML sections for the tool use format should be in a new line, this is important because we parese the tool output line by line.
 "#
         )
     }

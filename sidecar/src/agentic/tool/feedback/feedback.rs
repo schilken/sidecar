@@ -1,7 +1,6 @@
 //! Generates the feedback for the trajectory
 
 use async_trait::async_trait;
-use quick_xml::de::from_str;
 use std::sync::Arc;
 
 use llm_client::{
@@ -38,7 +37,7 @@ impl FeedbackGenerationRequest {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename = "feedback")]
+#[serde(rename = "feedback_generation")]
 #[serde(rename_all = "lowercase")]
 pub struct FeedbackGenerationResponse {
     analysis: String,
@@ -52,6 +51,62 @@ impl FeedbackGenerationResponse {
 
     pub fn feedback(&self) -> &str {
         &self.feedback
+    }
+
+    fn parse_response(response: String) -> Result<Self, ToolError> {
+        let lines = response
+            .lines()
+            .into_iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>();
+        enum FeedbackParsing {
+            NoBlock,
+            BlockStart,
+            AnalysisStart,
+            FeedbackStart,
+        }
+        let mut state = FeedbackParsing::NoBlock;
+        let mut analysis = vec![];
+        let mut feedback = vec![];
+        for line in lines.into_iter() {
+            match state {
+                FeedbackParsing::NoBlock => {
+                    if line == "<feedback_generation>" {
+                        state = FeedbackParsing::BlockStart;
+                    }
+                }
+                FeedbackParsing::BlockStart => {
+                    if line == "<analysis>" {
+                        state = FeedbackParsing::AnalysisStart;
+                    }
+                    if line == "<feedback>" {
+                        state = FeedbackParsing::FeedbackStart;
+                    }
+                    if line == "</feedback_generation>" {
+                        state = FeedbackParsing::NoBlock;
+                    }
+                }
+                FeedbackParsing::AnalysisStart => {
+                    if line == "</analysis>" {
+                        state = FeedbackParsing::BlockStart;
+                    } else {
+                        analysis.push(line);
+                    }
+                }
+                FeedbackParsing::FeedbackStart => {
+                    if line == "</feedback>" {
+                        state = FeedbackParsing::BlockStart;
+                    } else {
+                        feedback.push(line);
+                    }
+                }
+            }
+        }
+
+        Ok(FeedbackGenerationResponse {
+            analysis: analysis.join("\n"),
+            feedback: feedback.join("\n"),
+        })
     }
 }
 
@@ -98,12 +153,9 @@ impl Tool for FeedbackClientGenerator {
             )
             .await;
 
-        println!("reward_client::output::({:?})", &response);
-
         match response {
             Ok(response) => {
-                let output = from_str::<FeedbackGenerationResponse>(&response)
-                    .map_err(|_e| ToolError::SerdeConversionFailed)?;
+                let output = FeedbackGenerationResponse::parse_response(response)?;
                 Ok(ToolOutput::FeedbackGeneration(output))
             }
             Err(e) => Err(ToolError::LLMClientError(e)),
@@ -124,5 +176,27 @@ impl Tool for FeedbackClientGenerator {
 
     fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::FeedbackGenerationResponse;
+
+    #[test]
+    fn test_feedback_generation_parsing() {
+        let output = r#"<feedback_generation>
+<analysis>
+Analysis of the current task we are on and the different trajectories we have explored
+</analysis>
+<feedback>
+Direct feedback to the AI agent
+</feedback>
+</feedback_generation>
+"#;
+        let parsed_output = FeedbackGenerationResponse::parse_response(output.to_owned());
+        println!("{:?}", &parsed_output);
+        assert!(parsed_output.is_ok());
     }
 }

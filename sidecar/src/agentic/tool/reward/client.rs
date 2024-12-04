@@ -58,6 +58,78 @@ impl RewardGenerationResponse {
     pub fn value(&self) -> i32 {
         self.value
     }
+
+    fn parse_output(output: String) -> Result<Self, ToolError> {
+        let lines = output
+            .lines()
+            .into_iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>();
+        enum RewardParsing {
+            NoBlock,
+            BlockStart,
+            ExplanationStart,
+            FeedbackStart,
+            ValueStart,
+        }
+        let mut state = RewardParsing::NoBlock;
+        let mut explanation = vec![];
+        let mut feedback = vec![];
+        let mut value = None;
+        for line in lines.into_iter() {
+            match state {
+                RewardParsing::NoBlock => {
+                    if line == "<reward>" {
+                        state = RewardParsing::BlockStart;
+                    }
+                }
+                RewardParsing::BlockStart => {
+                    if line == "<explanation>" {
+                        state = RewardParsing::ExplanationStart;
+                    }
+                    if line == "<feedback>" {
+                        state = RewardParsing::FeedbackStart;
+                    }
+                    if line == "<value>" {
+                        state = RewardParsing::ValueStart;
+                    }
+                    if line == "</reward>" {
+                        state = RewardParsing::NoBlock;
+                    }
+                }
+                RewardParsing::ExplanationStart => {
+                    if line == "</explanation>" {
+                        state = RewardParsing::BlockStart;
+                    } else {
+                        explanation.push(line);
+                    }
+                }
+                RewardParsing::FeedbackStart => {
+                    if line == "</feedback>" {
+                        state = RewardParsing::BlockStart;
+                    } else {
+                        feedback.push(line);
+                    }
+                }
+                RewardParsing::ValueStart => {
+                    if line == "</value>" {
+                        state = RewardParsing::BlockStart;
+                    } else {
+                        value = line.parse::<i32>().ok();
+                    }
+                }
+            }
+        }
+
+        match value {
+            Some(value) => Ok(RewardGenerationResponse {
+                explanation: explanation.join("\n"),
+                feedback: Some(feedback.join("\n")),
+                value,
+            }),
+            None => Err(ToolError::SerdeConversionFailed),
+        }
+    }
 }
 
 pub struct RewardClientGenerator {
@@ -103,12 +175,9 @@ impl Tool for RewardClientGenerator {
             )
             .await;
 
-        println!("reward_client::output::({:?})", &response);
-
         match response {
             Ok(response) => {
-                let output = from_str::<RewardGenerationResponse>(&response)
-                    .map_err(|_e| ToolError::SerdeConversionFailed)?;
+                let output = RewardGenerationResponse::parse_output(response)?;
                 Ok(ToolOutput::RewardGeneration(output))
             }
             Err(e) => Err(ToolError::LLMClientError(e)),
@@ -129,5 +198,33 @@ impl Tool for RewardClientGenerator {
 
     fn get_reward_scale(&self, _trajectory_length: usize) -> Vec<ToolRewardScale> {
         vec![]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RewardGenerationResponse;
+
+    #[test]
+    fn test_parsing_bad_output() {
+        let raw_input = format!(
+            r#"<reward>
+<explanation>
+The last executed action was a search for the definition of the `escape` function in Python files, which is directly relevant to the task at hand. The search successfully located the target function in django/utils/html.py, which is exactly where we need to make changes. This is a good first step as it confirms the location of the code we need to modify and allows us to proceed with implementing the replacement using Python's stdlib html.escape(). The search parameters were well-defined and specific, yielding precisely the relevant result needed.
+</explanation>
+<feedback>
+While the current approach is to directly replace the implementation, an alternative branch could:
+1. First analyze the test suite to understand all use cases of the current escape() function
+2. Consider creating a wrapper function that maintains backwards compatibility for the '&#39' vs '&#x27' difference
+3. Add deprecation warnings for any cases where the behavior might differ
+4. Implement a gradual migration strategy across multiple Django versions
+</feedback>
+<value>
+85
+</value>
+</reward>"#
+        );
+        let parsed_outcome = RewardGenerationResponse::parse_output(raw_input);
+        assert!(parsed_outcome.is_ok());
     }
 }

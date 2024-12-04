@@ -11,6 +11,7 @@ use crate::{
         symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
         tool::{input::ToolInputPartial, r#type::ToolType},
     },
+    mcts::decider::decider::Decider,
     user_context::types::UserContext,
 };
 
@@ -21,19 +22,22 @@ use super::{
     value_function::reward::{Reward, RewardGeneration},
 };
 
-#[derive(Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(
+    Debug, Clone, std::hash::Hash, std::cmp::PartialEq, std::cmp::Eq, Serialize, Deserialize,
+)]
 pub enum ActionObservationMetadataKey {
     FileContentUpdated(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
     terminal: bool,
     expect_correction: bool,
-    /// The metadata here contains extra information about the action which have been
-    /// performed and any trace information which we want to keep
+    #[serde(skip)]
     metadata: HashMap<ActionObservationMetadataKey, String>,
 }
 
@@ -94,7 +98,7 @@ impl ActionObservation {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ActionToolParameters {
     Errored(String),
     Tool(ToolInputPartial),
@@ -128,7 +132,7 @@ impl ActionToolParameters {
 
 /// how do we get the action nodes to be part of the llm inference where we can generate
 /// more steps if required etc, thats the important bit here
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ActionNode {
     index: usize,
     action: Option<ActionToolParameters>,
@@ -200,8 +204,13 @@ impl ActionNode {
         false
     }
 
-    fn is_finished(&self) -> bool {
-        false
+    /// Checks if the node is finished by looking for the attempt completion tool
+    pub fn is_finished(&self) -> bool {
+        if let Some(action) = self.action() {
+            matches!(action.to_tool_type(), Some(ToolType::AttemptCompletion))
+        } else {
+            false
+        }
     }
 
     fn is_terminal_observation(&self) -> bool {
@@ -225,6 +234,30 @@ impl ActionNode {
         self.action = None;
     }
 
+    /// Generates th patch from the git(main) for the current node
+    /// It includes all the changes which we have performed
+    pub fn git_diff_from_main(&self) -> String {
+        self.user_context
+            .variables
+            .to_vec()
+            .into_iter()
+            .filter(|variable| variable.is_file())
+            .filter_map(|variable| {
+                if let Some(git_patch) = variable.patch_from_root() {
+                    Some(format!(
+                        r#"Changes in {}:
+{}"#,
+                        variable.fs_file_path.to_owned(),
+                        git_patch
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     pub fn user_context(&self) -> &UserContext {
         &self.user_context
     }
@@ -237,11 +270,19 @@ impl ActionNode {
         self.user_context = user_context;
         self
     }
+
+    pub fn reward_value(&self) -> f32 {
+        self.reward_value
+    }
 }
 
+#[derive(Serialize)]
 pub struct SearchTree {
+    #[serde(serialize_with = "serialize_usize_map")]
     pub index_to_node: HashMap<usize, ActionNode>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_children: HashMap<usize, Vec<usize>>,
+    #[serde(serialize_with = "serialize_usize_map")]
     node_to_parent: HashMap<usize, usize>,
     /// the maximum expansions allowed
     max_expansions: usize,
@@ -259,14 +300,17 @@ pub struct SearchTree {
     min_finished_nodes: Option<usize>,
 
     selector: Selector,
+    #[serde(skip)]
     tools: Vec<ToolType>,
     // the working directory
     root_directory: String,
     // the LLM Client
+    #[serde(skip)]
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
     // The tool box
+    #[serde(skip)]
     tool_box: Arc<ToolBox>,
 }
 
@@ -1093,7 +1137,8 @@ impl SearchTree {
                         } else {
                             // now we can compare the tool input parameters
                             // since they do not have the thinking over here
-                            first_tool_type.to_string() == second_tool_type.to_string()
+                            first_tool_input_parameters.to_string()
+                                == second_tool_input_parameters.to_string()
                         }
                     }
                     _ => false,
@@ -1202,6 +1247,8 @@ impl SearchTree {
                     let reward = RewardGeneration::new()
                         .generate_reward(nodes_trajectory, &self, message_properties.clone())
                         .await;
+
+                    println!("rewared_for_node:({node_index})::reward({:?})", &reward);
 
                     let node = self.get_node_mut(node_index);
                     if let Some(node) = node {
@@ -1327,6 +1374,9 @@ impl SearchTree {
             // Add tree visualization after each iteration
             self.print_tree();
 
+            // Log node_to_children for debugging
+            self.log_node_to_children();
+
             if self.is_finished() {
                 println!("Search finished - termination condition met");
                 break;
@@ -1354,11 +1404,9 @@ impl SearchTree {
 
             // Reset and prepare node
             self.reset_file_system(new_index).await;
-            println!("Reset filesystem for node {}", new_index);
 
             self.generate_feedback_for_node(new_index, message_properties.clone())
                 .await;
-            println!("Generated feedback for node {}", new_index);
 
             // Simulation
             self.run_node(new_index, message_properties.clone()).await;
@@ -1366,7 +1414,6 @@ impl SearchTree {
 
             // Backpropagation
             self.backpropogate(new_index);
-            println!("Completed backpropagation from node {}", new_index);
 
             // Log tree statistics
             println!(
@@ -1376,8 +1423,26 @@ impl SearchTree {
             );
         }
         println!("=== Search Complete ===\n");
+
         // Print final tree state
         self.print_tree();
+
+        println!("=== Deciding answer ===\n");
+        let best_node = Decider::new()
+            .decide(self.finished_nodes(), &self, message_properties.clone())
+            .await;
+
+        match best_node {
+            Ok(best_node) => {
+                // now update the state of the repo to this node and call it a day
+                // we are done
+                println!("Best answer selected: Node {}", best_node);
+                self.reset_file_system(best_node).await;
+            }
+            Err(e) => {
+                println!("Deciding answer failed: {}", e.to_string())
+            }
+        }
     }
 
     // Add this helper method for logging tree state
@@ -1399,65 +1464,125 @@ impl SearchTree {
     }
 
     fn print_tree(&self) {
-        println!("\nCurrent Tree State:");
-        self.print_node(self.root_node_index, 0, "", true);
-        println!(); // Extra line for readability
+        println!("MCTS Tree");
+        self.print_node(self.root_node_index, "", true);
     }
 
-    fn print_node(&self, node_index: usize, depth: usize, prefix: &str, is_root: bool) {
+    fn print_node(&self, node_index: usize, prefix: &str, is_last: bool) {
         let node = match self.get_node(node_index) {
             Some(n) => n,
             None => return,
         };
 
-        // Prepare the node information
-        let visits = node.visits;
-        let value = node.value;
-        let reward = node.reward_value;
-
-        // Create the action display string
-        let action_str = node
-            .action
-            .as_ref()
-            .map_or("(No Action)".to_string(), |a| match a {
-                ActionToolParameters::Tool(t) => format!("Tool: {}", t.to_tool_type().to_string()),
-                ActionToolParameters::Errored(e) => {
-                    let error_msg = e
-                        .lines()
-                        .next()
-                        .unwrap_or(e)
-                        .chars()
-                        .take(30)
-                        .collect::<String>();
-                    format!("Error: {}", error_msg)
+        // Build state parameters
+        let mut state_params = Vec::new();
+        if let Some(action) = &node.action {
+            match action {
+                ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
+                ActionToolParameters::Tool(tool) => {
+                    state_params.push(format!("{}", tool.to_tool_type()))
                 }
-            });
+            }
 
-        // Print the current node
-        if is_root {
-            println!(
-                "Root {} (v:{}, val:{:.2}, r:{}) {}",
-                node_index, visits, value, reward, action_str
-            );
-        } else {
-            println!(
-                "{}{}└─ Node {} (v:{}, val:{:.2}, r:{}) {}",
-                "  ".repeat(depth),
-                prefix,
-                node_index,
-                visits,
-                value,
-                reward,
-                action_str
-            );
-        }
-
-        // Print all children
-        if let Some(children) = self.node_to_children.get(&node_index) {
-            for (i, child_index) in children.iter().enumerate() {
-                let new_prefix = if i == children.len() - 1 { "" } else { "│ " };
-                self.print_node(*child_index, depth + 1, new_prefix, false);
+            if let Some(observation) = &node.observation {
+                if observation.expect_correction {
+                    state_params.push("expect_correction".to_string());
+                }
             }
         }
+
+        // Construct state_info
+        let state_info = if !state_params.is_empty() {
+            format!("Node {} ({})", node_index, state_params.join(", "))
+        } else {
+            format!("Node {} ()", node_index)
+        };
+
+        // Construct node_str based on reward
+        let node_str = if let Some(reward) = &node.reward {
+            format!("[{}]", reward.value())
+        } else {
+            format!("[-]")
+        };
+
+        // Reward string
+        let reward_str = if let Some(reward) = &node.reward {
+            format!("{}", reward.value())
+        } else {
+            "0".to_string()
+        };
+
+        // Decide which branch to draw
+        let branch = if is_last { "└── " } else { "├── " };
+
+        // Print the current node
+        if node.is_duplicate {
+            println!("{}{}{} {} (dup)", prefix, branch, node_str, state_info);
+        } else {
+            println!(
+                "{}{}{} {} (ex: {}, vi: {}, re: {})",
+                prefix,
+                branch,
+                node_str,
+                state_info,
+                self.children_indices(node)
+                    .map(|child| child.len())
+                    .unwrap_or_default(),
+                node.visits,
+                reward_str,
+            );
+        }
+
+        // Prepare prefix for child nodes
+        let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+
+        // Get children of the current node
+        let children = self
+            .node_to_children
+            .get(&node_index)
+            .cloned()
+            .unwrap_or_default();
+
+        let child_count = children.len();
+
+        // Recursively print each child node
+        for (i, child_index) in children.iter().enumerate() {
+            let is_last_child = i == child_count - 1;
+            self.print_node(*child_index, &new_prefix, is_last_child);
+        }
     }
+
+    // Add this helper method for logging node_to_children
+    fn log_node_to_children(&self) {
+        println!("Current node_to_children mapping:");
+        for (parent_index, children_indices) in &self.node_to_children {
+            println!("Node {}: {:?}", parent_index, children_indices);
+        }
+    }
+
+    /// use to debug the graph
+    fn _print_serialised_graph(&self) {
+        let graph_serialised = match serde_json::to_string(&self) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                eprintln!("mcts::select::Failed to serialize graph: {}", err);
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        println!("{}", graph_serialised);
+    }
+}
+
+fn serialize_usize_map<S, T>(map: &HashMap<usize, T>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+    T: serde::Serialize,
+{
+    use serde::ser::SerializeMap;
+    let mut map_serializer = serializer.serialize_map(Some(map.len()))?;
+    for (k, v) in map {
+        map_serializer.serialize_entry(&k.to_string(), v)?;
+    }
+    map_serializer.end()
 }

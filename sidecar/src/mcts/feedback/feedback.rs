@@ -228,7 +228,7 @@ Make sure to follow the output format to the letter and make not mistakes."#
                 }
                 let tool_type = action.to_tool_type().expect("if let None to hold");
                 let sibling_analysis = format!(
-                    r#"## Attemt {}
+                    r#"## Attempt {}
 **Action**: {}
 {}
 "#,
@@ -270,7 +270,7 @@ This attempt was identical to a previous one. Repeating this exact approach woul
 
         // adding sibling analysis
         let sibling_analysis = format!(
-            r#"# Hypothethical Attempts
+            r#"# Hypothetical Attempts
 
 {sibling_analysis}"#
         );

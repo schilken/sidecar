@@ -6,6 +6,7 @@ use crate::chunking::{
 };
 use async_recursion::async_recursion;
 use futures::{stream, StreamExt};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::helpers::{guess_content, ProbableFileKind};
@@ -133,8 +134,11 @@ impl VariableInformation {
             let final_content =
                 diffy::apply(&base_content, &patch.expect("Patch generation should work"))
                     .expect("diffy::apply to work");
+
+            // the initial patch is always on top of the self.content (which is how
+            // the file looks like at the main checkout of the repo)
             self.initial_patch =
-                Some(diffy::create_patch(&base_content, &final_content).to_string());
+                Some(diffy::create_patch(&self.content, &final_content).to_string());
 
             // reset our patch
             self.patch = None;
@@ -144,10 +148,28 @@ impl VariableInformation {
 
     pub fn base_content(&self) -> String {
         if let Some(initial_patch) = self.initial_patch.as_ref() {
-            let patch = diffy::Patch::from_str(&initial_patch);
-            diffy::apply(&self.content, &patch.expect("Patch generation should work"))
-                .expect("diffy::apply to work")
+            // println!("content: {}", self.content);
+            // println!("initial_patch: {}", initial_patch);
+            // Parse patch once and store it
+            let parsed_patch =
+                diffy::Patch::from_str(&initial_patch).expect("Patch generation should work");
+            // println!("patch: {}", &parsed_patch);
+            match diffy::apply(&self.content, &parsed_patch) {
+                Ok(content) => content,
+                Err(e) => {
+                    eprintln!("Error applying patch: {}", e);
+                    // print parsed patch
+                    println!("parsed_patch:\n=====\n{}\n======", &parsed_patch);
+                    println!(
+                        "original content to apply to:\n====\n{}\n========",
+                        &self.content
+                    );
+                    println!("Using content as base content");
+                    self.content.to_owned() // use content as base content, avoid panic
+                }
+            }
         } else {
+            // println!("No initial patch found");
             self.content.to_owned()
         }
     }
@@ -315,7 +337,7 @@ impl FileContentValue {
     }
 }
 
-#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct UserContext {
     pub variables: Vec<VariableInformation>,
     #[serde(default)]

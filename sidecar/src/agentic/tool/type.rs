@@ -1,10 +1,11 @@
 //! Contains the basic tool and how to extract data from it
 
 use axum::async_trait;
+use serde::{Deserialize, Serialize};
 
 use super::{errors::ToolError, input::ToolInput, output::ToolOutput};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ToolType {
     // AskDocumentation,
     // AskUser,

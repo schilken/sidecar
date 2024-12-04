@@ -273,7 +273,6 @@ TOOL USE
 You have access to a set of tools. You can use one tool per message (and only one), and you will receive the result of the tool use from the user. You should use the tools step-by-step to accomplish the user task.
 You use the previous information which you get from using the tools to inform your next tool usage.
 You should always output the <thinking></thinking> section before using a tool and we are showing you an example
-Your goal is pass the test patch.
 
 # Tool Use Formatting
 
@@ -313,8 +312,6 @@ Always adhere to this format for the tool use to ensure proper parsing and execu
 4. Formulate your tool use using the XML format specified for each tool.
 5. After each tool use, the user will respond with the result of that tool use. This result will provide you with the necessary information to continue your task or make further decisions. This response may include:
   - Information about whether the tool succeeded or failed, along with any reasons for failure.
-  - Linter errors that may have arisen due to the changes you made, which you'll need to address.
-  - New terminal output in reaction to the changes, which you may need to consider or act upon.
   - Any other relevant feedback or information related to the tool use.
 
 It is crucial to proceed step-by-step, waiting for the user's message after each tool use before moving forward with the task. This approach allows you to:
@@ -345,7 +342,6 @@ RULES
 - ALWAYS start your tool use with the <thinking></thinking> section.
 - ONLY USE A SINGLE tool at a time, never use multiple tools in the same response.
 - Each xml tag should be on a new line. This is important because we are parsing the input line by line.
-- NEVER attempt to write new tests or scripts.
 
 ====
 
@@ -368,8 +364,7 @@ You are an expert in {repo_name} and know in detail everything about this reposi
 3. Remember, you have extensive capabilities with access to a wide range of tools that can be used in powerful and clever ways as necessary to accomplish each goal. Before calling a tool, do some analysis within <thinking></thinking> tags. First, analyze the file structure provided in environment_details to gain context and insights for proceeding effectively. Then, think about which of the provided tools is the most relevant tool to accomplish the user's task. Next, go through each of the required parameters of the relevant tool and determine if the user has directly provided or given enough information to infer a value. When deciding if the parameter can be inferred, carefully consider all the context to see if it supports a specific value. If all of the required parameters are present or can be reasonably inferred, close the thinking tag and proceed with the tool use. BUT, if one of the values for a required parameter is missing.
 4. Once you've completed the Github Issue, you must use the attempt_completion tool to present the result of solving the problem.
 5. You can ONLY USE 1 TOOL in each step and not multiple tools, using multiple tools is not allowed.
-6. You MUST ALWAYS run the test runner tool after you have finished with your round of edits.
-7. ONLY ATTEMPT COMPLETION if you have finished with your round of edits.
+6. ONLY ATTEMPT COMPLETION if you have finished with your round of edits.
 "#
         )
     }
@@ -708,6 +703,8 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                         exchange_id.to_owned(),
                         tool_found,
                     ));
+                }
+                ToolBlockEvent::ToolWithParametersFound => {
                     // cancel the token once we have a tool
                     tool_found_token.cancel();
                     // If we have found a tool we should break hard over here
@@ -777,6 +774,7 @@ pub struct ToolParameters {
 enum ToolBlockEvent {
     ThinkingFull(String),
     ToolFound(ToolType),
+    ToolWithParametersFound,
     ToolParameters(ToolParameters),
     // contains the full string of the step output since we failed to find any event
     NoToolFound(String),
@@ -985,6 +983,7 @@ impl ToolUseGenerator {
                                             self.file_pattern.clone(),
                                         ),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -996,6 +995,7 @@ impl ToolUseGenerator {
                                 self.tool_input_partial = Some(ToolInputPartial::CodeEditing(
                                     CodeEditingPartialRequest::new(fs_file_path, instruction),
                                 ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1006,7 +1006,8 @@ impl ToolUseGenerator {
                             (Some(directory_path), Some(recursive)) => {
                                 self.tool_input_partial = Some(ToolInputPartial::ListFiles(
                                     ListFilesInput::new(directory_path, recursive),
-                                ))
+                                ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1018,6 +1019,7 @@ impl ToolUseGenerator {
                                 self.tool_input_partial = Some(ToolInputPartial::OpenFile(
                                     OpenFileRequestPartial::new(fs_file_path),
                                 ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1027,6 +1029,7 @@ impl ToolUseGenerator {
                         self.tool_input_partial = Some(ToolInputPartial::LSPDiagnostics(
                             WorkspaceDiagnosticsPartial::new(),
                         ));
+                        let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                         self.tool_type_possible = None;
                     } else if answer_line_at_index == "</execute_command>" {
                         self.tool_block_status = ToolBlockStatus::NoBlock;
@@ -1034,7 +1037,8 @@ impl ToolUseGenerator {
                             Some(command) => {
                                 self.tool_input_partial = Some(ToolInputPartial::TerminalCommand(
                                     TerminalInputPartial::new(command.to_owned()),
-                                ))
+                                ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1050,6 +1054,7 @@ impl ToolUseGenerator {
                                             self.command.clone(),
                                         ),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1062,6 +1067,7 @@ impl ToolUseGenerator {
                                     Some(ToolInputPartial::AskFollowupQuestions(
                                         AskFollowupQuestionsRequest::new(question),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1074,6 +1080,7 @@ impl ToolUseGenerator {
                                     Some(ToolInputPartial::RepoMapGeneration(
                                         RepoMapGeneratorRequestPartial::new(directory_path),
                                     ));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }
@@ -1085,6 +1092,7 @@ impl ToolUseGenerator {
                             Some(fs_file_paths) => {
                                 self.tool_input_partial =
                                     Some(ToolInputPartial::TestRunner(fs_file_paths));
+                                let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}
                         }

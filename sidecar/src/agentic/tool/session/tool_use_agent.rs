@@ -265,6 +265,7 @@ The problem is a Github Issue on {repo_name}
             r#"You are an expert software engineer tasked with solving Github issues which the user will provide. You are an expert at {repo_name} and you will be given a list of tools which you can use one after the other to debug and fix the issue.
 The user is pretty sure that all the information to solve the issue is present within the {working_directory} which they have cloned for to work on the issue.
 The end goal is to fix the issue in the current {working_directory}.
+I have already taken care of all changes to any test files described in {working_directory}. This means you DON'T have to modify the testing logic or any of the tests in any way!
 Your task is to make the minimal changes to non-tests files in the {working_directory} directory to ensure the Github Issue is satisfied.
 ====
 
@@ -325,7 +326,6 @@ By waiting for and carefully considering the user's response after each tool use
 CAPABILITIES
 
 - You have access to tools that let you execute CLI commands on the local checkout, list files, view source code definitions, regex search, read and write files. These tools help you effectively accomplish a wide range of tasks, such as writing code, making edits or improvements to existing files, understanding the current state of a project, and much more.
-- When the user initially gives you a task, a recursive list of all filepaths in the current working directory ({working_directory}) will be included in environment_details. This provides an overview of the project's file structure, offering key insights into the project from directory/file names (how developers conceptualize and organize their code) and file extensions (the language used). This can also guide decision-making on which files to explore further. If you need to further explore directories such as outside the current working directory, you can use the list_files tool. If you pass 'true' for the recursive parameter, it will list files recursively. Otherwise, it will list files at the top level, which is better suited for generic directories where you don't necessarily need the nested structure.
 - You can use search_files to perform regex searches across files in a specified directory, outputting context-rich results that include surrounding lines. This is particularly useful for understanding code patterns, finding specific implementations, or identifying areas that need refactoring.
 
 ====
@@ -333,7 +333,6 @@ CAPABILITIES
 RULES
 
 - Your current working directory is: {working_directory}
-- You cannot \`cd\` into a different directory to complete a task. You are stuck operating from '{working_directory}', so be sure to pass in the correct 'path' parameter when using tools that require a path.
 - When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility. Based on the Github Issue you may use it to find code patterns, TODO comments, function definitions, or any text-based information across the project. The results include context, so analyze the surrounding code to better understand the matches. Leverage the search_files tool in combination with other tools for more comprehensive analysis. For example, use it to find specific code patterns, then use read_file to examine the full context of interesting matches before using code_edit_input to make informed changes.
 - When making changes to code, always consider the context in which the code is being used. Ensure that your changes are compatible with the existing codebase and that they follow the project's coding standards and best practices.
 - Use the tools provided to accomplish the Github Issue efficiently and effectively. When you've completed solving the issue, you must use the attempt_completion tool to present the result to the user.
@@ -362,13 +361,13 @@ You are an expert in {repo_name} and know in detail everything about this reposi
 1. Analyze the Github Issue and set clear, achievable goals to accomplish it. Prioritize these goals in a logical order.
 2. Your task is to make the minimal changes to non-tests files in the {working_directory} directory to ensure the Github Issue is satisfied.
 3. Work through these goals sequentially, utilizing available tools one at a time as necessary. Each goal should correspond to a distinct step in your problem-solving process. You will be informed on the work completed and what's remaining as you go.
-4. Remember, you have extensive capabilities with access to a wide range of tools that can be used in powerful and clever ways as necessary to accomplish each goal. Before calling a tool, do some analysis within <thinking></thinking> tags. First, analyze the file structure provided in environment_details to gain context and insights for proceeding effectively. Then, think about which of the provided tools is the most relevant tool to accomplish the user's task. Next, go through each of the required parameters of the relevant tool and determine if the user has directly provided or given enough information to infer a value. When deciding if the parameter can be inferred, carefully consider all the context to see if it supports a specific value. If all of the required parameters are present or can be reasonably inferred, close the thinking tag and proceed with the tool use. BUT, if one of the values for a required parameter is missing.
+4. Remember, you have extensive capabilities with access to a wide range of tools that can be used in powerful and clever ways as necessary to accomplish each goal. Before calling a tool, do some analysis within <thinking></thinking> tags. First, analyze the file structure provided in environment_details to gain context and insights for proceeding effectively. Then, think about which of the provided tools is the most relevant tool to accomplish the user's task. Next, go through each of the required parameters of the relevant tool and determine if the user has directly provided or given enough information to infer a value. When deciding if the parameter can be inferred, carefully consider all the context to see if it supports a specific value. If all of the required parameters are present or can be reasonably inferred, close the thinking tag and proceed with the tool use.
 5. Once you've completed the Github Issue, you must use the attempt_completion tool to present the result of solving the problem.
-6. Think about EDGECASES and make sure your fix handles them as well.
-7. You are NEVER to create new test files, always edit one of the test file which is already present. You can also add print statements in the test file to iterate on the test output. Most test files are suffixed with the name base name of the file or are located in tests folder.
-8. There might be instances where we would need to maintain backwards compatibility or cases where it would be better to not maintain it, think deeply about the problem statement and keep this in mind.
-9. You can ONLY USE 1 TOOL in each step and not multiple tools, using multiple tools is not allowed.
-10. ONLY ATTEMPT COMPLETION if you have finished with your round of edits.
+6. Create a script to reproduce the error and execute it with `python <filename.py>` using the terminal_command, to confirm the error.
+7. Think about EDGECASES and make sure your fix handles them as well.
+8. You can ONLY USE 1 TOOL in each step and not multiple tools, using multiple tools is not allowed.
+9. ONLY ATTEMPT COMPLETION if you have finished with your round of edits.
+10. Run test files so you can catch any regressions in your solution. Some test output might be wrong or conflict the Github Issue so carefully understand the test file and the outcome before commiting to making more changes based on the test output.
 "#
         )
     }
@@ -564,7 +563,8 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                 }
             } else {
                 self.system_message(&input)
-            });
+            })
+            .cache_point();
         // grab the previous messages as well
         let llm_properties = input
             .symbol_event_message_properties

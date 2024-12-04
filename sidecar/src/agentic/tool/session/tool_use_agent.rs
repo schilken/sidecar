@@ -326,6 +326,7 @@ By waiting for and carefully considering the user's response after each tool use
 CAPABILITIES
 
 - You have access to tools that let you execute CLI commands on the local checkout, list files, view source code definitions, regex search, read and write files. These tools help you effectively accomplish a wide range of tasks, such as writing code, making edits or improvements to existing files, understanding the current state of a project, and much more.
+- The code_edit tool also allows you to implicilty create a new file and write content to it. You can use it to edit the code or create a new file and write content to it.
 - You can use search_files to perform regex searches across files in a specified directory, outputting context-rich results that include surrounding lines. This is particularly useful for understanding code patterns, finding specific implementations, or identifying areas that need refactoring.
 
 ====

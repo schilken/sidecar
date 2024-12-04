@@ -23,7 +23,9 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use llm_client::{
     broker::LLMBroker,
-    clients::types::{LLMClientCompletionRequest, LLMClientMessage, LLMClientRole},
+    clients::types::{
+        LLMClientCompletionRequest, LLMClientMessage, LLMClientMessageImage, LLMClientRole,
+    },
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -34,20 +36,59 @@ pub enum SessionChatRole {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionChatMessageImage {
+    r#type: String,
+    media_type: String,
+    data: String,
+}
+
+impl SessionChatMessageImage {
+    pub fn new(r#type: String, media_type: String, data: String) -> Self {
+        Self {
+            r#type,
+            media_type,
+            data,
+        }
+    }
+
+    pub fn to_llm_image(&self) -> LLMClientMessageImage {
+        LLMClientMessageImage::new(
+            self.r#type.to_owned(),
+            self.media_type.to_owned(),
+            self.data.to_owned(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SessionChatMessage {
     message: String,
+    images: Vec<SessionChatMessageImage>,
     role: SessionChatRole,
 }
 
 impl SessionChatMessage {
-    pub fn new(role: SessionChatRole, message: String) -> Self {
-        Self { role, message }
+    pub fn new(
+        role: SessionChatRole,
+        message: String,
+        images: Vec<SessionChatMessageImage>,
+    ) -> Self {
+        Self {
+            role,
+            message,
+            images,
+        }
     }
 
-    pub fn assistant(message: String) -> Self {
+    pub fn images(&self) -> &[SessionChatMessageImage] {
+        self.images.as_slice()
+    }
+
+    pub fn assistant(message: String, images: Vec<SessionChatMessageImage>) -> Self {
         Self {
             message,
             role: SessionChatRole::Assistant,
+            images,
         }
     }
 
@@ -55,10 +96,11 @@ impl SessionChatMessage {
         &self.message
     }
 
-    pub fn user(message: String) -> Self {
+    pub fn user(message: String, images: Vec<SessionChatMessageImage>) -> Self {
         Self {
             message,
             role: SessionChatRole::User,
+            images,
         }
     }
 
@@ -74,9 +116,21 @@ impl SessionChatMessage {
             &LLMClientRole::User => SessionChatRole::User,
             _ => SessionChatRole::User,
         };
+        let images = llm_message
+            .images()
+            .into_iter()
+            .map(|llm_image| {
+                SessionChatMessageImage::new(
+                    llm_image.data().to_owned(),
+                    llm_image.media().to_owned(),
+                    llm_image.data().to_owned(),
+                )
+            })
+            .collect();
         Self {
             message: message.to_owned(),
             role,
+            images,
         }
     }
 }

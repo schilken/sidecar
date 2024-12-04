@@ -8,7 +8,7 @@ use crate::provider::{LLMProvider, LLMProviderAPIKeys};
 
 use super::types::{
     LLMClient, LLMClientCompletionRequest, LLMClientCompletionResponse,
-    LLMClientCompletionStringRequest, LLMClientError, LLMType,
+    LLMClientCompletionStringRequest, LLMClientError, LLMClientMessageImage, LLMType,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23,10 +23,52 @@ struct AnthropicCacheControl {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-struct AnthropicMessageContent {
-    r#type: String,
-    text: String,
-    cache_control: Option<AnthropicCacheControl>,
+#[serde(tag = "type")]
+enum AnthropicMessageContent {
+    #[serde(rename = "text")]
+    Text {
+        text: String,
+        cache_control: Option<AnthropicCacheControl>,
+    },
+    #[serde(rename = "image")]
+    Image { source: AnthropicImageSource },
+}
+
+impl AnthropicMessageContent {
+    pub fn text(content: String, cache_control: Option<AnthropicCacheControl>) -> Self {
+        Self::Text {
+            text: content,
+            cache_control,
+        }
+    }
+
+    fn cache_control(mut self, cache_control_update: Option<AnthropicCacheControl>) -> Self {
+        if let Self::Text {
+            text: _,
+            ref mut cache_control,
+        } = self
+        {
+            *cache_control = cache_control_update;
+        }
+        self
+    }
+
+    pub fn image(llm_image: &LLMClientMessageImage) -> Self {
+        Self::Image {
+            source: AnthropicImageSource {
+                r#type: llm_image.r#type().to_owned(),
+                media_type: llm_image.media().to_owned(),
+                data: llm_image.data().to_owned(),
+            },
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+struct AnthropicImageSource {
+    r#type: String,     // e.g., "base64"
+    media_type: String, // e.g., "image/png"
+    data: String,       // base64-encoded image data
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -39,11 +81,7 @@ impl AnthropicMessage {
     pub fn new(role: String, content: String) -> Self {
         Self {
             role,
-            content: vec![AnthropicMessageContent {
-                r#type: "text".to_owned(),
-                text: content,
-                cache_control: None,
-            }],
+            content: vec![AnthropicMessageContent::text(content, None)],
         }
     }
 }
@@ -162,15 +200,13 @@ impl AnthropicRequest {
             .iter()
             .find(|message| message.role().is_system())
             .map(|message| {
-                let mut anthropic_message_content = AnthropicMessageContent {
-                    r#type: "text".to_owned(),
-                    text: message.content().to_owned(),
-                    cache_control: None,
-                };
+                let mut anthropic_message_content =
+                    AnthropicMessageContent::text(message.content().to_owned(), None);
                 if message.is_cache_point() {
-                    anthropic_message_content.cache_control = Some(AnthropicCacheControl {
-                        r#type: AnthropicCacheType::Ephemeral,
-                    });
+                    anthropic_message_content =
+                        anthropic_message_content.cache_control(Some(AnthropicCacheControl {
+                            r#type: AnthropicCacheType::Ephemeral,
+                        }));
                 }
                 vec![anthropic_message_content]
             })
@@ -180,19 +216,26 @@ impl AnthropicRequest {
             .into_iter()
             .filter(|message| message.role().is_user() || message.role().is_assistant())
             .map(|message| {
-                let mut anthropic_message_content = AnthropicMessageContent {
-                    r#type: "text".to_owned(),
-                    text: message.content().to_owned(),
-                    cache_control: None,
-                };
+                let mut anthropic_message_content =
+                    AnthropicMessageContent::text(message.content().to_owned(), None);
                 if message.is_cache_point() {
-                    anthropic_message_content.cache_control = Some(AnthropicCacheControl {
-                        r#type: AnthropicCacheType::Ephemeral,
-                    });
+                    anthropic_message_content =
+                        anthropic_message_content.cache_control(Some(AnthropicCacheControl {
+                            r#type: AnthropicCacheType::Ephemeral,
+                        }));
                 }
+                let images = message
+                    .images()
+                    .into_iter()
+                    .map(|image| AnthropicMessageContent::image(image))
+                    .collect::<Vec<_>>();
+                let final_content = vec![anthropic_message_content]
+                    .into_iter()
+                    .chain(images)
+                    .collect();
                 AnthropicMessage {
                     role: message.role().to_string(),
-                    content: vec![anthropic_message_content],
+                    content: final_content,
                 }
             })
             .collect::<Vec<_>>();
@@ -311,6 +354,11 @@ impl LLMClient for AnthropicClient {
         });
         let anthropic_request =
             AnthropicRequest::from_client_completion_request(request, model_str.to_owned());
+
+        println!(
+            "anthropioc_request::({:?})",
+            &serde_json::to_string(&anthropic_request)
+        );
 
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

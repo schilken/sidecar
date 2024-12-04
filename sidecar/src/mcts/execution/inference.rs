@@ -181,6 +181,7 @@ impl InferenceEngine {
             r#" Output format reminder:
 Always include the <thinking></thinking> section before using the tool."#
                 .to_owned(),
+            vec![],
         ));
 
         let tool_agent_input = ToolUseAgentInput::new(

@@ -578,7 +578,13 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                 let role = session_message.role();
                 match role {
                     SessionChatRole::User => {
-                        LLMClientMessage::user(session_message.message().to_owned())
+                        LLMClientMessage::user(session_message.message().to_owned()).with_images(
+                            session_message
+                                .images()
+                                .into_iter()
+                                .map(|session_image| session_image.to_llm_image())
+                                .collect(),
+                        )
                     }
                     SessionChatRole::Assistant => {
                         LLMClientMessage::assistant(session_message.message().to_owned())

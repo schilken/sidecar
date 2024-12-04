@@ -114,7 +114,8 @@ path/to/file2.py
             ToolRewardScale::new(
                 50,
                 74,
-                "Tests have some failures, but they are minor or unforeseeable, and the agent shows understanding in interpreting results.",
+                // TODO(skcd): Added more instructions to check the test output more clearly.
+                "Tests have some failures, but they are minor or unforeseeable, and the agent shows understanding in interpreting results. The test failures do not cause any regressions to the user task.",
             ),
             ToolRewardScale::new(
                 25,

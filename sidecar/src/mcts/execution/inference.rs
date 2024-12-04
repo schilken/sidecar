@@ -494,12 +494,12 @@ This is part of the file which might not contain the method in full, if thats th
                     let response: FileEditedResponseStruct =
                         response.json().await.expect("to work");
                     let generated_diff = response.generated_diff;
-                    let message = if &updated_code == original_content {
+                    let message = if updated_code.trim() == original_content.trim() {
                         "Failed to perform the requested edits".to_owned()
                     } else {
                         format!(
                             r#"I performed the edits which you asked me to, and here is the patch with the changes
-    {generated_diff}"#
+{generated_diff}"#
                         )
                     };
                     Ok(ActionObservation::new(message.to_owned(), message, false)

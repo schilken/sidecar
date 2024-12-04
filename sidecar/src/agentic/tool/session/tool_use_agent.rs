@@ -358,6 +358,7 @@ You are an expert in {repo_name} and know in detail everything about this reposi
 
 
 You are NOT ALLOWED to create or edit any of the test-files. You can only run them to check for regressions.
+You are NOT ALLOWED to install any new packages. The dev environment has already been setup for you before you run any command or the reproduce_error.py script.
 
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
 2. Create a script to reproduce the error and execute it with `python reproduce_error.py` using the execute_command (which uses bash internally), to confirm the error

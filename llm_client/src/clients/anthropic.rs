@@ -355,11 +355,6 @@ impl LLMClient for AnthropicClient {
         let anthropic_request =
             AnthropicRequest::from_client_completion_request(request, model_str.to_owned());
 
-        println!(
-            "anthropioc_request::({:?})",
-            &serde_json::to_string(&anthropic_request)
-        );
-
         let current_time = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()

@@ -61,12 +61,12 @@ updateLatestVersion() {
 
   generateJson
 
-  # prefixed with /extension to distinguish from ide
-  echo "${JSON_DATA}" > "${REPOSITORY_NAME}/extension/${VERSION_PATH}/latest.json"
+  echo "${JSON_DATA}" > "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json"
 
   echo "${JSON_DATA}"
 }
 
+cd ..
 
 # init versions repo for later commiting + pushing the json file to it
 # thank you https://www.vinaygopinath.me/blog/tech/commit-to-master-branch-on-github-using-travis-ci/
@@ -78,14 +78,15 @@ git remote rm origin
 git remote add origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@${GH_HOST}/${VERSIONS_REPOSITORY}.git" &> /dev/null
 
 
+
 if [[ "${OS_NAME}" == "darwin" ]]; then
-  VERSION_PATH="${QUALITY}/darwin"
+  VERSION_PATH="extension/${QUALITY}/darwin"
   updateLatestVersion
 elif [[ "${OS_NAME}" == "windows" ]]; then
-  VERSION_PATH="${QUALITY}/win32"
+  VERSION_PATH="extension/${QUALITY}/win32"
   updateLatestVersion
 else # linux
-  VERSION_PATH="${QUALITY}/linux"
+  VERSION_PATH="extension/${QUALITY}/linux"
   updateLatestVersion
 fi
 

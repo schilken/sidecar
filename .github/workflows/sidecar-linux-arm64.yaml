@@ -24,8 +24,6 @@ jobs:
       - name: Build
         run: |
           cargo build --release
-        outputs:
-        RELEASE_VERSION: ${{ env.RELEASE_VERSION }}
       # Install gcp skcd
       - name: Setup GCP SDK
         uses: "google-github-actions/setup-gcloud@v0"

@@ -295,9 +295,39 @@ impl LLMClientMessageFunctionReturn {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientMessageImage {
+    r#type: String,
+    media: String,
+    data: String,
+}
+
+impl LLMClientMessageImage {
+    pub fn new(r#type: String, media: String, data: String) -> Self {
+        Self {
+            r#type,
+            media,
+            data,
+        }
+    }
+
+    pub fn r#type(&self) -> &str {
+        &self.r#type
+    }
+
+    pub fn media(&self) -> &str {
+        &self.media
+    }
+
+    pub fn data(&self) -> &str {
+        &self.data
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct LLMClientMessage {
     role: LLMClientRole,
     message: String,
+    images: Vec<LLMClientMessageImage>,
     function_call: Option<LLMClientMessageFunctionCall>,
     function_return: Option<LLMClientMessageFunctionReturn>,
     // if this message marks a caching point in the overall message
@@ -305,10 +335,11 @@ pub struct LLMClientMessage {
 }
 
 impl LLMClientMessage {
-    pub fn new(role: LLMClientRole, message: String) -> Self {
+    pub fn new(role: LLMClientRole, message: String, images: Vec<LLMClientMessageImage>) -> Self {
         Self {
             role,
             message,
+            images,
             function_call: None,
             function_return: None,
             cache_point: false,
@@ -322,9 +353,12 @@ impl LLMClientMessage {
     pub fn concat(self, other: Self) -> Self {
         // We are going to concatenate the 2 llm client messages togehter, at this moment
         // we are just gonig to join the message with a \n
+        let mut final_images = self.images.to_vec();
+        final_images.extend(other.images);
         Self {
             role: self.role,
             message: self.message + "\n" + &other.message,
+            images: final_images,
             function_call: match self.function_call {
                 Some(function_call) => Some(function_call),
                 None => other.function_call,
@@ -341,6 +375,7 @@ impl LLMClientMessage {
         Self {
             role: LLMClientRole::Assistant,
             message: "".to_owned(),
+            images: vec![],
             function_call: Some(LLMClientMessageFunctionCall { name, arguments }),
             function_return: None,
             cache_point: false,
@@ -351,6 +386,7 @@ impl LLMClientMessage {
         Self {
             role: LLMClientRole::Function,
             message: "".to_owned(),
+            images: vec![],
             function_call: None,
             function_return: Some(LLMClientMessageFunctionReturn { name, content }),
             cache_point: false,
@@ -358,15 +394,20 @@ impl LLMClientMessage {
     }
 
     pub fn user(message: String) -> Self {
-        Self::new(LLMClientRole::User, message)
+        Self::new(LLMClientRole::User, message, vec![])
+    }
+
+    pub fn with_images(mut self, images: Vec<LLMClientMessageImage>) -> Self {
+        self.images = images;
+        self
     }
 
     pub fn assistant(message: String) -> Self {
-        Self::new(LLMClientRole::Assistant, message)
+        Self::new(LLMClientRole::Assistant, message, vec![])
     }
 
     pub fn system(message: String) -> Self {
-        Self::new(LLMClientRole::System, message)
+        Self::new(LLMClientRole::System, message, vec![])
     }
 
     pub fn content(&self) -> &str {
@@ -380,7 +421,7 @@ impl LLMClientMessage {
     }
 
     pub fn function(message: String) -> Self {
-        Self::new(LLMClientRole::Function, message)
+        Self::new(LLMClientRole::Function, message, vec![])
     }
 
     pub fn role(&self) -> &LLMClientRole {
@@ -415,6 +456,10 @@ impl LLMClientMessage {
     pub fn set_role(mut self, role: LLMClientRole) -> Self {
         self.role = role;
         self
+    }
+
+    pub fn images(&self) -> &[LLMClientMessageImage] {
+        self.images.as_slice()
     }
 }
 

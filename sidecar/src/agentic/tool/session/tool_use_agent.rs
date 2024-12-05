@@ -358,6 +358,7 @@ You are an expert in {repo_name} and know in detail everything about this reposi
 
 
 You are NOT ALLOWED to create or edit any of the test-files. You can only run them to check for regressions.
+You are NOT ALLOWED to install any new packages. The dev environment has already been setup for you before you run any command or the reproduce_error.py script.
 
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
 2. Create a script to reproduce the error and execute it with `python reproduce_error.py` using the execute_command (which uses bash internally), to confirm the error
@@ -369,6 +370,7 @@ You are NOT ALLOWED to create or edit any of the test-files. You can only run th
 9. TEST files need to be run using the test_runner command, while the reproduce_error script can be run only using the execute_command tool.
 8. Run test files at the very end so you can catch any regressions in your solution. Some test output might be wrong or conflict the Github Issue so carefully understand the test file and the outcome before commiting to making more changes based on the test output.
 10. All the XML sections for the tool use format should be in a new line, this is important because we parese the tool output line by line.
+11. NEVER forget to include the <thinking></thinking> section before using a tool. We will not be able to invoke the tool properly if you forget it.
 "#
         )
     }
@@ -578,7 +580,13 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                 let role = session_message.role();
                 match role {
                     SessionChatRole::User => {
-                        LLMClientMessage::user(session_message.message().to_owned())
+                        LLMClientMessage::user(session_message.message().to_owned()).with_images(
+                            session_message
+                                .images()
+                                .into_iter()
+                                .map(|session_image| session_image.to_llm_image())
+                                .collect(),
+                        )
                     }
                     SessionChatRole::Assistant => {
                         LLMClientMessage::assistant(session_message.message().to_owned())

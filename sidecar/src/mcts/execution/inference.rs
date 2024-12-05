@@ -178,9 +178,10 @@ impl InferenceEngine {
 
         // add a reminder for the output format so it never forgets the thinking tag
         session_messages.push(SessionChatMessage::user(
-            r"# Output format reminder:
-Always include the <thinking></thinking> section before using the tool.#"
+            r#" Output format reminder:
+Always include the <thinking></thinking> section before using the tool."#
                 .to_owned(),
+            vec![],
         ));
 
         let tool_agent_input = ToolUseAgentInput::new(

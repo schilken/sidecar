@@ -26,7 +26,10 @@ impl OpenFileRequestPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<read_file>
+            r#"<thinking>
+...
+</thinking>
+<read_file>
 <fs_file_path>
 {}
 </fs_file_path>

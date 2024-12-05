@@ -27,7 +27,10 @@ impl TerminalInputPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<execute_command>
+            r#"<thinking>
+...
+</thinking>
+<execute_command>
 <command>
 {}
 </command>

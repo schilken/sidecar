@@ -30,7 +30,10 @@ impl AttemptCompletionClientRequest {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<attempt_completion>
+            r#"<thinking>
+...
+</thinking>
+<attempt_completion>
 <result>
 {}
 </result>

@@ -8,7 +8,7 @@ use crate::provider::{LLMProvider, LLMProviderAPIKeys};
 
 use super::types::{
     LLMClient, LLMClientCompletionRequest, LLMClientCompletionResponse,
-    LLMClientCompletionStringRequest, LLMClientError, LLMType,
+    LLMClientCompletionStringRequest, LLMClientError, LLMClientMessageImage, LLMType,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -23,10 +23,52 @@ struct AnthropicCacheControl {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-struct AnthropicMessageContent {
-    r#type: String,
-    text: String,
-    cache_control: Option<AnthropicCacheControl>,
+#[serde(tag = "type")]
+enum AnthropicMessageContent {
+    #[serde(rename = "text")]
+    Text {
+        text: String,
+        cache_control: Option<AnthropicCacheControl>,
+    },
+    #[serde(rename = "image")]
+    Image { source: AnthropicImageSource },
+}
+
+impl AnthropicMessageContent {
+    pub fn text(content: String, cache_control: Option<AnthropicCacheControl>) -> Self {
+        Self::Text {
+            text: content,
+            cache_control,
+        }
+    }
+
+    fn cache_control(mut self, cache_control_update: Option<AnthropicCacheControl>) -> Self {
+        if let Self::Text {
+            text: _,
+            ref mut cache_control,
+        } = self
+        {
+            *cache_control = cache_control_update;
+        }
+        self
+    }
+
+    pub fn image(llm_image: &LLMClientMessageImage) -> Self {
+        Self::Image {
+            source: AnthropicImageSource {
+                r#type: llm_image.r#type().to_owned(),
+                media_type: llm_image.media().to_owned(),
+                data: llm_image.data().to_owned(),
+            },
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+struct AnthropicImageSource {
+    r#type: String,     // e.g., "base64"
+    media_type: String, // e.g., "image/png"
+    data: String,       // base64-encoded image data
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
@@ -39,11 +81,7 @@ impl AnthropicMessage {
     pub fn new(role: String, content: String) -> Self {
         Self {
             role,
-            content: vec![AnthropicMessageContent {
-                r#type: "text".to_owned(),
-                text: content,
-                cache_control: None,
-            }],
+            content: vec![AnthropicMessageContent::text(content, None)],
         }
     }
 }
@@ -62,7 +100,7 @@ enum AnthropicEvent {
     ContentBlockStart {
         #[serde(rename = "index")]
         _index: u32,
-        content_block: ContentBlock,
+        content_block: ContentBlockStart,
     },
     #[serde(rename = "ping")]
     Ping,
@@ -70,7 +108,7 @@ enum AnthropicEvent {
     ContentBlockDelta {
         #[serde(rename = "index")]
         _index: u32,
-        delta: ContentBlockDelta,
+        delta: ContentBlockDeltaType, // Using the new enum here
     },
     #[serde(rename = "content_block_stop")]
     ContentBlockStop {
@@ -102,17 +140,12 @@ struct MessageData {
 }
 
 #[derive(Debug, Deserialize)]
-struct ContentBlock {
-    // #[serde(rename = "type")]
-    // content_block_type: String,
-    text: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ContentBlockDelta {
-    // #[serde(rename = "type")]
-    // delta_type: String,
-    text: String,
+#[serde(tag = "type")]
+enum ContentBlockStart {
+    #[serde(rename = "tool_use")]
+    InputToolUse { name: String },
+    #[serde(rename = "text")]
+    TextDelta { text: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -128,10 +161,34 @@ struct Usage {
     cache_read_input_tokens: u32,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+enum ContentBlockDeltaType {
+    #[serde(rename = "input_json_delta")]
+    InputJsonDelta {
+        #[serde(rename = "partial_json")]
+        partial_json: String,
+    },
+    #[serde(rename = "text_delta")]
+    TextDelta {
+        text: String, // Reusing your `ContentBlockDelta.text` concept here
+    },
+}
+
+// We are implementing this only for the str_replace editor and nothing else
+// we will expand on this later
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct AnthropicTool {
+    name: String,
+    r#type: String,
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 struct AnthropicRequest {
     system: Vec<AnthropicMessageContent>,
     messages: Vec<AnthropicMessage>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<AnthropicTool>,
     temperature: f32,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -157,20 +214,35 @@ impl AnthropicRequest {
             }
         };
         let messages = completion_request.messages();
+        // grab the tools over here
+        let tools = messages
+            .iter()
+            .map(|message| {
+                message.tools().into_iter().filter_map(|tool| {
+                    if tool.has_type() {
+                        Some(AnthropicTool {
+                            name: tool.name().to_owned(),
+                            r#type: tool.r#type().expect("has_type to hold"),
+                        })
+                    } else {
+                        None
+                    }
+                })
+            })
+            .flatten()
+            .collect::<Vec<_>>();
         // First we try to find the system message
         let system_message = messages
             .iter()
             .find(|message| message.role().is_system())
             .map(|message| {
-                let mut anthropic_message_content = AnthropicMessageContent {
-                    r#type: "text".to_owned(),
-                    text: message.content().to_owned(),
-                    cache_control: None,
-                };
+                let mut anthropic_message_content =
+                    AnthropicMessageContent::text(message.content().to_owned(), None);
                 if message.is_cache_point() {
-                    anthropic_message_content.cache_control = Some(AnthropicCacheControl {
-                        r#type: AnthropicCacheType::Ephemeral,
-                    });
+                    anthropic_message_content =
+                        anthropic_message_content.cache_control(Some(AnthropicCacheControl {
+                            r#type: AnthropicCacheType::Ephemeral,
+                        }));
                 }
                 vec![anthropic_message_content]
             })
@@ -180,19 +252,26 @@ impl AnthropicRequest {
             .into_iter()
             .filter(|message| message.role().is_user() || message.role().is_assistant())
             .map(|message| {
-                let mut anthropic_message_content = AnthropicMessageContent {
-                    r#type: "text".to_owned(),
-                    text: message.content().to_owned(),
-                    cache_control: None,
-                };
+                let mut anthropic_message_content =
+                    AnthropicMessageContent::text(message.content().to_owned(), None);
                 if message.is_cache_point() {
-                    anthropic_message_content.cache_control = Some(AnthropicCacheControl {
-                        r#type: AnthropicCacheType::Ephemeral,
-                    });
+                    anthropic_message_content =
+                        anthropic_message_content.cache_control(Some(AnthropicCacheControl {
+                            r#type: AnthropicCacheType::Ephemeral,
+                        }));
                 }
+                let images = message
+                    .images()
+                    .into_iter()
+                    .map(|image| AnthropicMessageContent::image(image))
+                    .collect::<Vec<_>>();
+                let final_content = vec![anthropic_message_content]
+                    .into_iter()
+                    .chain(images)
+                    .collect();
                 AnthropicMessage {
                     role: message.role().to_string(),
-                    content: vec![anthropic_message_content],
+                    content: final_content,
                 }
             })
             .collect::<Vec<_>>();
@@ -201,6 +280,7 @@ impl AnthropicRequest {
             system: system_message,
             messages,
             temperature,
+            tools,
             stream: true,
             max_tokens,
             model: model_str,
@@ -221,6 +301,7 @@ impl AnthropicRequest {
             system: vec![],
             messages,
             temperature,
+            tools: vec![],
             stream: true,
             max_tokens,
             model: model_str,
@@ -329,7 +410,7 @@ impl LLMClient for AnthropicClient {
             // enables prompt caching: https://arc.net/l/quote/qtlllqgf
             .header(
                 "anthropic-beta".to_owned(),
-                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15".to_owned(),
+                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15,computer-use-2024-10-22".to_owned(),
             )
             .json(&anthropic_request)
             .send()
@@ -350,40 +431,53 @@ impl LLMClient for AnthropicClient {
             let event = serde_json::from_str::<AnthropicEvent>(&event.data);
             match event {
                 Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
-                    buffered_string = buffered_string + &content_block.text;
-                    let _ = sender.send(LLMClientCompletionResponse::new(
-                        buffered_string.to_owned(),
-                        Some(content_block.text),
-                        model_str.to_owned(),
-                    ));
+                    match content_block {
+                        ContentBlockStart::InputToolUse { name } => {
+                            println!("anthropic::tool_use::{}", &name);
+                        }
+                        ContentBlockStart::TextDelta { text } => {
+                            buffered_string = buffered_string + &text;
+                            let _ = sender.send(LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                Some(text),
+                                model_str.to_owned(),
+                            ));
+                        }
+                    }
                 }
-                Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => {
-                    buffered_string = buffered_string + &delta.text;
-                    let time_now = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis();
-                    let time_diff = time_now - current_time;
-                    debug!(
-                        event_name = "anthropic.buffered_string",
-                        message_tokens_count = message_tokens_count,
-                        generated_tokens_count = &buffered_string.len(),
-                        time_taken = time_diff,
-                    );
-                    let _ = sender.send(LLMClientCompletionResponse::new(
-                        buffered_string.to_owned(),
-                        Some(delta.text),
-                        model_str.to_owned(),
-                    ));
-                }
+                Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => match delta {
+                    ContentBlockDeltaType::TextDelta { text } => {
+                        buffered_string = buffered_string + &text;
+                        let time_now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis();
+                        let time_diff = time_now - current_time;
+                        debug!(
+                            event_name = "anthropic.buffered_string",
+                            message_tokens_count = message_tokens_count,
+                            generated_tokens_count = &buffered_string.len(),
+                            time_taken = time_diff,
+                        );
+                        let _ = sender.send(LLMClientCompletionResponse::new(
+                            buffered_string.to_owned(),
+                            Some(text),
+                            model_str.to_owned(),
+                        ));
+                    }
+                    ContentBlockDeltaType::InputJsonDelta { partial_json } => {
+                        println!("input_json_delta::{}", &partial_json);
+                    }
+                },
                 Ok(AnthropicEvent::MessageStart { message }) => {
                     println!(
                         "anthropic::cache_hit::{}",
                         message.usage.cache_read_input_tokens
                     );
                 }
-                Err(_e) => {
-                    break;
+                Err(e) => {
+                    println!("{:?}", e);
+                    // break;
                 }
                 _ => {
                     // dbg!(&event);
@@ -429,21 +523,37 @@ impl LLMClient for AnthropicClient {
             let event = serde_json::from_str::<AnthropicEvent>(&event.data);
             match event {
                 Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
-                    buffered_string = buffered_string + &content_block.text;
-                    let _ = sender.send(LLMClientCompletionResponse::new(
-                        buffered_string.to_owned(),
-                        Some(content_block.text),
-                        model_str.to_owned(),
-                    ));
+                    match content_block {
+                        ContentBlockStart::InputToolUse { name } => {
+                            println!("anthropic::tool_use::{}", &name);
+                        }
+                        ContentBlockStart::TextDelta { text } => {
+                            buffered_string = buffered_string + &text;
+                            let _ = sender.send(LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                Some(text),
+                                model_str.to_owned(),
+                            ));
+                        }
+                    }
                 }
-                Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => {
-                    buffered_string = buffered_string + &delta.text;
-                    let _ = sender.send(LLMClientCompletionResponse::new(
-                        buffered_string.to_owned(),
-                        Some(delta.text),
-                        model_str.to_owned(),
-                    ));
-                }
+                Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => match delta {
+                    ContentBlockDeltaType::TextDelta { text } => {
+                        buffered_string = buffered_string + &text;
+                        let _ = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis();
+                        let _ = sender.send(LLMClientCompletionResponse::new(
+                            buffered_string.to_owned(),
+                            Some(text),
+                            model_str.to_owned(),
+                        ));
+                    }
+                    ContentBlockDeltaType::InputJsonDelta { partial_json } => {
+                        println!("input_json_delta::{}", &partial_json);
+                    }
+                },
                 Err(_) => {
                     break;
                 }

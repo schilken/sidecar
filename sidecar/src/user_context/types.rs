@@ -61,6 +61,27 @@ impl VariableType {
 /// }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ImageInformation {
+    r#type: String,
+    media_type: String,
+    data: String,
+}
+
+impl ImageInformation {
+    pub fn r#type(&self) -> &str {
+        &self.r#type
+    }
+
+    pub fn media_type(&self) -> &str {
+        &self.media_type
+    }
+
+    pub fn data(&self) -> &str {
+        &self.data
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct VariableInformation {
     pub start_position: Position,
     pub end_position: Position,
@@ -342,6 +363,8 @@ pub struct UserContext {
     pub variables: Vec<VariableInformation>,
     #[serde(default)]
     original_variables: Vec<VariableInformation>,
+    #[serde(default)]
+    images: Vec<ImageInformation>,
     // TODO(skcd): The file content map over here contains the full context through out the
     // lifecycle of ownership
     // so we can freely update it when we want
@@ -376,6 +399,7 @@ impl UserContext {
     ) -> Self {
         Self {
             variables: variables.to_vec(),
+            images: vec![],
             file_content_map,
             original_variables: variables,
             terminal_selection,
@@ -385,6 +409,10 @@ impl UserContext {
             is_plan_append: false,
             is_plan_drop_from: None,
         }
+    }
+
+    pub fn images(&self) -> &[ImageInformation] {
+        self.images.as_slice()
     }
 
     pub fn copy_at_instance(mut self) -> Self {
@@ -669,7 +697,21 @@ impl UserContext {
                 })
             })
             .collect::<Vec<_>>();
+        let images_to_extend = self
+            .images
+            .into_iter()
+            .filter(|already_present_image| {
+                !new_user_context.images.iter().any(|image| {
+                    if &image.media_type == &already_present_image.media_type {
+                        &already_present_image.data == &image.data
+                    } else {
+                        false
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
         new_user_context.variables.extend(variables_to_select);
+        new_user_context.images.extend(images_to_extend);
         new_user_context
     }
 

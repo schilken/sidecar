@@ -194,7 +194,10 @@ impl ListFilesInput {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<list_files>
+            r#"<thinking>
+...
+</thinking>
+<list_files>
 <directory_path>
 {}
 </directory_path>

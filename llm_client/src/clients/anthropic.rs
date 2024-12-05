@@ -372,7 +372,7 @@ impl LLMClient for AnthropicClient {
             // enables prompt caching: https://arc.net/l/quote/qtlllqgf
             .header(
                 "anthropic-beta".to_owned(),
-                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15".to_owned(),
+                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15,computer-use-2024-10-22".to_owned(),
             )
             .json(&anthropic_request)
             .send()

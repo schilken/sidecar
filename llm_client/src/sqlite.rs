@@ -23,7 +23,10 @@ pub async fn init(config: LLMBrokerConfiguration) -> Result<SqlitePool, LLMClien
 }
 
 async fn connect(data_dir: &str) -> Result<SqlitePool, LLMClientError> {
+    println!("Attempting to connect to SQLite database at {data_dir}/llm_data.data");
+
     let url = format!("sqlite://{data_dir}/llm_data.data?mode=rwc");
+    println!("Using SQLite connection URL: {url}");
 
     let pool = match SqlitePool::connect(&url).await {
         Ok(p) => {

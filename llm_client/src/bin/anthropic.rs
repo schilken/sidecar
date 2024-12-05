@@ -2,7 +2,7 @@ use llm_client::clients::types::LLMClientMessageTool;
 use llm_client::{
     clients::{
         anthropic::AnthropicClient,
-        types::{LLMClient, LLMClientCompletionRequest, LLMClientMessage},
+        types::{LLMClientCompletionRequest, LLMClientMessage},
     },
     provider::AnthropicAPIKey,
 };
@@ -14,8 +14,7 @@ async fn main() {
     // put the model name over here, not sure if this is really required for LMStudio?
 
     let openai_client = AnthropicClient::new();
-    let api_key =
-        llm_client::provider::LLMProviderAPIKeys::Anthropic(AnthropicAPIKey { api_key: api_key });
+    let api_key = llm_client::provider::LLMProviderAPIKeys::Anthropic(AnthropicAPIKey { api_key });
     let request = LLMClientCompletionRequest::new(
         llm_client::clients::types::LLMType::ClaudeSonnet,
         vec![LLMClientMessage::system(
@@ -77,7 +76,7 @@ pub enum FrameworkEvent {
     );
     let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
     let response = openai_client
-        .stream_completion(api_key, request, sender)
+        .stream_completion_with_tool(api_key, request, sender)
         .await;
 
     // wait for the magic to show up in your stdout

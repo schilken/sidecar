@@ -355,6 +355,151 @@ impl AnthropicClient {
             _ => Err(LLMClientError::UnSupportedModel),
         }
     }
+
+    /// We try to get the completion along with the tool which we are planning on using
+    pub async fn stream_completion_with_tool(
+        &self,
+        api_key: LLMProviderAPIKeys,
+        request: LLMClientCompletionRequest,
+        sender: UnboundedSender<LLMClientCompletionResponse>,
+        // The first parameter in the Vec<(String, String)> is the tool_type and the
+        // second one is the value of the tool use after we pare it out
+    ) -> Result<(String, Vec<(String, String)>), LLMClientError> {
+        let endpoint = self.chat_endpoint();
+        let model_str = self.get_model_string(request.model())?;
+        let message_tokens = request
+            .messages()
+            .iter()
+            .map(|message| message.content().len())
+            .collect::<Vec<_>>();
+        let mut message_tokens_count = 0;
+        message_tokens.into_iter().for_each(|tokens| {
+            message_tokens_count += tokens;
+        });
+        let anthropic_request =
+            AnthropicRequest::from_client_completion_request(request, model_str.to_owned());
+
+        let current_time = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let response_stream = self
+            .client
+            .post(endpoint)
+            .header(
+                "x-api-key".to_owned(),
+                self.generate_api_bearer_key(api_key)?,
+            )
+            .header("anthropic-version".to_owned(), "2023-06-01".to_owned())
+            .header("content-type".to_owned(), "application/json".to_owned())
+            // anthropic-beta: prompt-caching-2024-07-31
+            // enables prompt caching: https://arc.net/l/quote/qtlllqgf
+            .header(
+                "anthropic-beta".to_owned(),
+                "prompt-caching-2024-07-31,max-tokens-3-5-sonnet-2024-07-15,computer-use-2024-10-22".to_owned(),
+            )
+            .json(&anthropic_request)
+            .send()
+            .await
+            .map_err(|e| {
+                println!("sidecar.anthropic.error: {:?}", &e);
+                e
+            })?;
+
+        let mut event_source = response_stream.bytes_stream().eventsource();
+
+        // let event_next = event_source.next().await;
+        // dbg!(&event_next);
+
+        let mut buffered_string = "".to_owned();
+        // controls which tool we will be using if any
+        let mut tool_use_indication: Vec<(String, String)> = vec![];
+
+        // handle all the tool parameters that are coming
+        // we will keep a global tracker over here
+        let mut current_tool_use = None;
+        let current_tool_use_ref = &mut current_tool_use;
+        let mut running_tool_input = "".to_owned();
+        let running_tool_input_ref = &mut running_tool_input;
+
+        // loop over the content we are getting
+        while let Some(Ok(event)) = event_source.next().await {
+            // TODO: debugging this
+            let event = serde_json::from_str::<AnthropicEvent>(&event.data);
+            match event {
+                Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
+                    match content_block {
+                        ContentBlockStart::InputToolUse { name } => {
+                            *current_tool_use_ref = Some(name.to_owned());
+                            println!("anthropic::tool_use::{}", &name);
+                        }
+                        ContentBlockStart::TextDelta { text } => {
+                            buffered_string = buffered_string + &text;
+                            let _ = sender.send(LLMClientCompletionResponse::new(
+                                buffered_string.to_owned(),
+                                Some(text),
+                                model_str.to_owned(),
+                            ));
+                        }
+                    }
+                }
+                Ok(AnthropicEvent::ContentBlockDelta { delta, .. }) => match delta {
+                    ContentBlockDeltaType::TextDelta { text } => {
+                        buffered_string = buffered_string + &text;
+                        let time_now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_millis();
+                        let time_diff = time_now - current_time;
+                        debug!(
+                            event_name = "anthropic.buffered_string",
+                            message_tokens_count = message_tokens_count,
+                            generated_tokens_count = &buffered_string.len(),
+                            time_taken = time_diff,
+                        );
+                        let _ = sender.send(LLMClientCompletionResponse::new(
+                            buffered_string.to_owned(),
+                            Some(text),
+                            model_str.to_owned(),
+                        ));
+                    }
+                    ContentBlockDeltaType::InputJsonDelta { partial_json } => {
+                        *running_tool_input_ref = running_tool_input_ref.to_owned() + &partial_json;
+                        println!("input_json_delta::{}", &partial_json);
+                    }
+                },
+                Ok(AnthropicEvent::ContentBlockStop { _index }) => {
+                    // if the code block has stopped we need to pack our bags and
+                    // create an entry for the tool which we want to use
+                    if let Some(current_tool_use) = current_tool_use_ref {
+                        tool_use_indication.push((
+                            current_tool_use.to_owned(),
+                            running_tool_input_ref.to_owned(),
+                        ));
+                    }
+
+                    // now empty the tool use tracker
+                    *current_tool_use_ref = None;
+                    *running_tool_input_ref = "".to_owned();
+                }
+                Ok(AnthropicEvent::MessageStart { message }) => {
+                    println!(
+                        "anthropic::cache_hit::{}",
+                        message.usage.cache_read_input_tokens
+                    );
+                }
+                Err(e) => {
+                    println!("{:?}", e);
+                    // break;
+                }
+                _ => {
+                    // dbg!(&event);
+                }
+            }
+        }
+
+        Ok((buffered_string, tool_use_indication))
+    }
 }
 
 #[async_trait]

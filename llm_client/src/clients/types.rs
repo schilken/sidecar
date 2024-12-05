@@ -295,6 +295,54 @@ impl LLMClientMessageFunctionReturn {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientMessageTool {
+    name: String,
+    description: String,
+    r#type: Option<String>,
+    input_schema: Option<serde_json::Value>,
+    required: Vec<String>,
+}
+
+impl LLMClientMessageTool {
+    pub fn new(
+        name: String,
+        description: String,
+        input_schema: Option<serde_json::Value>,
+        required: Vec<String>,
+    ) -> Self {
+        Self {
+            name,
+            description,
+            input_schema,
+            required,
+            r#type: None,
+        }
+    }
+
+    pub fn with_type(name: String, r#type: String) -> Self {
+        Self {
+            name,
+            r#type: Some(r#type),
+            description: "".to_owned(),
+            input_schema: None,
+            required: vec![],
+        }
+    }
+
+    pub fn has_type(&self) -> bool {
+        self.r#type.is_some()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn r#type(&self) -> Option<String> {
+        self.r#type.clone()
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct LLMClientMessageImage {
     r#type: String,
     media: String,
@@ -328,6 +376,7 @@ pub struct LLMClientMessage {
     role: LLMClientRole,
     message: String,
     images: Vec<LLMClientMessageImage>,
+    tools: Vec<LLMClientMessageTool>,
     function_call: Option<LLMClientMessageFunctionCall>,
     function_return: Option<LLMClientMessageFunctionReturn>,
     // if this message marks a caching point in the overall message
@@ -340,6 +389,7 @@ impl LLMClientMessage {
             role,
             message,
             images,
+            tools: vec![],
             function_call: None,
             function_return: None,
             cache_point: false,
@@ -355,10 +405,13 @@ impl LLMClientMessage {
         // we are just gonig to join the message with a \n
         let mut final_images = self.images.to_vec();
         final_images.extend(other.images);
+        let mut final_tools = self.tools.to_vec();
+        final_tools.extend(other.tools);
         Self {
             role: self.role,
             message: self.message + "\n" + &other.message,
             images: final_images,
+            tools: final_tools,
             function_call: match self.function_call {
                 Some(function_call) => Some(function_call),
                 None => other.function_call,
@@ -376,6 +429,7 @@ impl LLMClientMessage {
             role: LLMClientRole::Assistant,
             message: "".to_owned(),
             images: vec![],
+            tools: vec![],
             function_call: Some(LLMClientMessageFunctionCall { name, arguments }),
             function_return: None,
             cache_point: false,
@@ -387,6 +441,7 @@ impl LLMClientMessage {
             role: LLMClientRole::Function,
             message: "".to_owned(),
             images: vec![],
+            tools: vec![],
             function_call: None,
             function_return: Some(LLMClientMessageFunctionReturn { name, content }),
             cache_point: false,
@@ -460,6 +515,15 @@ impl LLMClientMessage {
 
     pub fn images(&self) -> &[LLMClientMessageImage] {
         self.images.as_slice()
+    }
+
+    pub fn tools(&self) -> &[LLMClientMessageTool] {
+        &self.tools.as_slice()
+    }
+
+    pub fn insert_tool(mut self, tool: LLMClientMessageTool) -> Self {
+        self.tools.push(tool);
+        self
     }
 }
 

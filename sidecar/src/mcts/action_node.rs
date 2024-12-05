@@ -310,6 +310,8 @@ pub struct SearchTree {
     #[serde(skip)]
     tool_box: Arc<ToolBox>,
     log_directory: String,
+    /// The tools are in json mode?
+    is_json_mode: bool,
 }
 
 impl SearchTree {
@@ -328,6 +330,7 @@ impl SearchTree {
         tool_box: Arc<ToolBox>,
         llm_client: Arc<LLMBroker>,
         log_directory: String,
+        is_json_mode: bool,
     ) -> Self {
         let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
@@ -348,6 +351,7 @@ impl SearchTree {
             llm_client,
             repo_name,
             log_directory,
+            is_json_mode,
         }
     }
     pub fn root(&self) -> Option<&ActionNode> {
@@ -1204,7 +1208,7 @@ impl SearchTree {
         // trajectory
         let nodes_trajectory = self.trajectory(node_index);
 
-        let inference_engine = InferenceEngine::new();
+        let inference_engine = InferenceEngine::new(self.is_json_mode);
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node

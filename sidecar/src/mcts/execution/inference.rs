@@ -63,11 +63,13 @@ impl InferenceEngineResult {
     }
 }
 
-pub struct InferenceEngine {}
+pub struct InferenceEngine {
+    is_json_mode: bool,
+}
 
 impl InferenceEngine {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(is_json_mode: bool) -> Self {
+        Self { is_json_mode }
     }
 
     pub async fn execute(
@@ -630,10 +632,11 @@ Terminal output: {}"#,
                 );
                 Ok(ActionObservation::new(message.to_owned(), message, false))
             }
-            ToolInputPartial::TestRunner(fs_file_paths) => {
+            ToolInputPartial::TestRunner(test_runner_output) => {
                 let editor_url = message_properties.editor_url().to_owned();
+                let fs_file_paths = test_runner_output.fs_file_paths();
                 let input =
-                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.clone(), editor_url));
+                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.to_vec(), editor_url));
                 let response = tool_box
                     .tools()
                     .invoke(input)

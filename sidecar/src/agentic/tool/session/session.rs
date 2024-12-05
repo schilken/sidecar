@@ -2201,10 +2201,11 @@ The Github Issue we are trying to solve is:
             message_properties.request_id_str().to_owned()
         };
         match tool_input_partial {
-            ToolInputPartial::TestRunner(fs_file_paths) => {
+            ToolInputPartial::TestRunner(test_runner) => {
                 let editor_url = message_properties.editor_url().to_owned();
+                let fs_file_paths = test_runner.fs_file_paths();
                 let input =
-                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.clone(), editor_url));
+                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.to_vec(), editor_url));
                 let response = tool_box
                     .tools()
                     .invoke(input)

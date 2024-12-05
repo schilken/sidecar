@@ -160,6 +160,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_configuration,
     );
 
+    let tools = vec![
+        ToolType::ListFiles,
+        ToolType::SearchFileContentWithRegex,
+        ToolType::OpenFile,
+        // if we are in json mode then select the code editor tool
+        if args.json_mode {
+            ToolType::CodeEditorTool
+        } else {
+            ToolType::CodeEditing
+        },
+        ToolType::AttemptCompletion,
+        ToolType::RepoMapGeneration,
+        ToolType::TerminalCommand,
+        ToolType::TestRunner,
+    ];
+
     let selector = Selector::new(
         1.0,                         // exploitation_weight
         false,                       // use_average_reward
@@ -192,19 +208,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         repo_name,                              // repo_name
         input_parts.instance.problem_statement, // problem_statment
         selector,                               // selector
-        vec![
-            ToolType::ListFiles,
-            ToolType::SearchFileContentWithRegex,
-            ToolType::OpenFile,
-            ToolType::CodeEditing,
-            ToolType::AttemptCompletion,
-            ToolType::RepoMapGeneration,
-            ToolType::TerminalCommand,
-            ToolType::TestRunner,
-        ], // tools
+        tools,                                  // tools
         tool_box,                               // tool_box
         llm_broker,                             // llm_client
         log_directory,                          // log directory
+        args.json_mode,                         // json mode
     );
 
     // Run the search

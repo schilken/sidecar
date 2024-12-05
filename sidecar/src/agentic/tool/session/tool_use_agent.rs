@@ -5,7 +5,10 @@ use std::sync::Arc;
 use futures::StreamExt;
 use llm_client::{
     broker::LLMBroker,
-    clients::types::{LLMClientCompletionRequest, LLMClientMessage},
+    clients::{
+        anthropic::AnthropicClient,
+        types::{LLMClientCompletionRequest, LLMClientMessage},
+    },
 };
 
 use crate::agentic::{
@@ -25,6 +28,7 @@ use crate::agentic::{
         repo_map::generator::RepoMapGeneratorRequestPartial,
         session::chat::SessionChatRole,
         terminal::terminal::TerminalInputPartial,
+        test_runner::runner::TestRunnerRequestPartial,
     },
 };
 
@@ -56,6 +60,12 @@ impl ToolUseAgentInput {
             symbol_event_message_properties,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum ToolUseAgentOutputWithTools {
+    Success((Vec<ToolInputPartial>, String)),
+    Failure,
 }
 
 #[derive(Debug)]
@@ -261,8 +271,8 @@ The problem is a Github Issue on {repo_name}
         let operating_system = self.operating_system.to_owned();
         format!(
             r#"You are an expert software engineer tasked with solving Github issues which the user will provide. You are an expert at {repo_name} and you will be given a list of tools which you can use one after the other to debug and fix the issue.
-I have already taken care of all changes to any test files described in /repo. This means you DON'T have to modify the testing logic or any of the tests in any way!
-Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the Github Issue is satisfied.
+I have already taken care of all changes to any test files described in {working_directory}. This means you DON'T have to modify the testing logic or any of the tests in any way!
+Your task is to make the minimal changes to non-tests files in the {working_directory} directory to ensure the Github Issue is satisfied.
 ====
 
 TOOL USE
@@ -293,7 +303,7 @@ CAPABILITIES
 
 RULES
 
-- Your current working directory is: /repo
+- Your current working directory is: {working_directory}
 - When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility. Based on the Github Issue you may use it to find code patterns, function definitions, or any text-based information across the project. The results include context, so analyze the surrounding code to better understand the matches. Leverage the search_files tool in combination with other tools for more comprehensive analysis. For example, use it to find specific code patterns, then use read_file to examine the full context of interesting matches before using code_edit_input to make informed changes.
 - When making changes to code, always consider the context in which the code is being used. Ensure that your changes are compatible with the existing codebase and that they follow the project's coding standards and best practices.
 - Use the tools provided to accomplish the Github Issue efficiently and effectively. When you've completed solving the issue, you must use the attempt_completion tool to present the result to the user.
@@ -631,11 +641,12 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         }
     }
 
-    /// TODO(skcd): Use the json tool format over here and make it work
+    /// TODO(skcd): This is a special call we are using only for anthropic and nothing
+    /// else right now
     pub async fn invoke_json_tool(
         &self,
         input: ToolUseAgentInput,
-    ) -> Result<ToolUseAgentOutput, SymbolError> {
+    ) -> Result<ToolUseAgentOutputWithTools, SymbolError> {
         let repo_name = self.swe_bench_repo_name.clone().expect("to be present");
         let system_message =
             LLMClientMessage::system(self.system_message_for_swe_bench_json_mode(&repo_name));
@@ -674,10 +685,10 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             }
         });
 
-        let root_request_id = input
-            .symbol_event_message_properties
-            .root_request_id()
-            .to_owned();
+        // let root_request_id = input
+        //     .symbol_event_message_properties
+        //     .root_request_id()
+        //     .to_owned();
         let final_messages: Vec<_> = vec![system_message]
             .into_iter()
             .chain(previous_messages)
@@ -686,13 +697,13 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         let cancellation_token = input.symbol_event_message_properties.cancellation_token();
 
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
-        let cloned_llm_client = self.llm_client.clone();
-        let cloned_root_request_id = root_request_id.to_owned();
-        let _response = run_with_cancellation(
+        // we are going to fly blind for a bit before getting the tracing required
+        // let cloned_root_request_id = root_request_id.to_owned();
+        let response = run_with_cancellation(
             cancellation_token.clone(),
             tokio::spawn(async move {
-                cloned_llm_client
-                    .stream_completion(
+                AnthropicClient::new()
+                    .stream_completion_with_tool(
                         llm_properties.api_key().clone(),
                         LLMClientCompletionRequest::new(
                             llm_properties.llm().clone(),
@@ -700,19 +711,23 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                             0.2,
                             None,
                         ),
-                        llm_properties.provider().clone(),
-                        vec![
-                            ("event_type".to_owned(), "tool_use".to_owned()),
-                            ("root_id".to_owned(), cloned_root_request_id),
-                        ]
-                        .into_iter()
-                        .collect(),
+                        // llm_properties.provider().clone(),
+                        // vec![
+                        //     ("event_type".to_owned(), "tool_use".to_owned()),
+                        //     ("root_id".to_owned(), cloned_root_request_id),
+                        // ]
+                        // .into_iter()
+                        // .collect(),
                         sender,
                     )
                     .await
             }),
         )
         .await;
+
+        if let Some(Ok(Ok(_response))) = response {
+            // we will have a string here representing the thinking and another with the various tool inputs and their json representation
+        }
 
         // parse the response over here somehow and figure out what to do with it
         todo!()
@@ -1270,8 +1285,9 @@ impl ToolUseGenerator {
                         self.tool_type_possible = None;
                         match self.fs_file_paths.clone() {
                             Some(fs_file_paths) => {
-                                self.tool_input_partial =
-                                    Some(ToolInputPartial::TestRunner(fs_file_paths));
+                                self.tool_input_partial = Some(ToolInputPartial::TestRunner(
+                                    TestRunnerRequestPartial::new(fs_file_paths),
+                                ));
                                 let _ = self.sender.send(ToolBlockEvent::ToolWithParametersFound);
                             }
                             _ => {}

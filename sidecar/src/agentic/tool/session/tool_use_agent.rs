@@ -17,7 +17,8 @@ use crate::agentic::{
         ui_event::UIEventWithID,
     },
     tool::{
-        code_edit::types::CodeEditingPartialRequest,
+        code_edit::{code_editor::CodeEditorParameters, types::CodeEditingPartialRequest},
+        errors::ToolError,
         helpers::cancellation_future::run_with_cancellation,
         input::ToolInputPartial,
         lsp::{
@@ -725,12 +726,65 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         )
         .await;
 
-        if let Some(Ok(Ok(_response))) = response {
+        if let Some(Ok(Ok(response))) = response {
             // we will have a string here representing the thinking and another with the various tool inputs and their json representation
-        }
+            let thinking = response.0;
+            let tool_inputs = response.1;
+            let mut tool_inputs_parsed = vec![];
+            for (tool_type, tool_input) in tool_inputs.into_iter() {
+                let tool_input = match tool_type.as_ref() {
+                    "list_files" => ToolInputPartial::ListFiles(
+                        serde_json::from_str::<ListFilesInput>(&tool_input).map_err(|_e| {
+                            SymbolError::ToolError(ToolError::SerdeConversionFailed)
+                        })?,
+                    ),
+                    "search_file" => ToolInputPartial::SearchFileContentWithRegex(
+                        serde_json::from_str::<SearchFileContentInputPartial>(&tool_input)
+                            .map_err(|_e| {
+                                SymbolError::ToolError(ToolError::SerdeConversionFailed)
+                            })?,
+                    ),
+                    "read_file" => ToolInputPartial::OpenFile(
+                        serde_json::from_str::<OpenFileRequestPartial>(&tool_input).map_err(
+                            |_e| SymbolError::ToolError(ToolError::SerdeConversionFailed),
+                        )?,
+                    ),
+                    "execute_command" => ToolInputPartial::TerminalCommand(
+                        serde_json::from_str::<TerminalInputPartial>(&tool_input).map_err(
+                            |_e| SymbolError::ToolError(ToolError::SerdeConversionFailed),
+                        )?,
+                    ),
+                    "attempt_completion" => ToolInputPartial::AttemptCompletion(
+                        serde_json::from_str::<AttemptCompletionClientRequest>(&tool_input)
+                            .map_err(|_e| {
+                                SymbolError::ToolError(ToolError::SerdeConversionFailed)
+                            })?,
+                    ),
+                    "test_runner" => ToolInputPartial::TestRunner(
+                        serde_json::from_str::<TestRunnerRequestPartial>(&tool_input).map_err(
+                            |_e| SymbolError::ToolError(ToolError::SerdeConversionFailed),
+                        )?,
+                    ),
+                    "str_replace_editor" => ToolInputPartial::CodeEditorParameters(
+                        serde_json::from_str::<CodeEditorParameters>(&tool_input).map_err(
+                            |_e| SymbolError::ToolError(ToolError::SerdeConversionFailed),
+                        )?,
+                    ),
+                    _ => {
+                        println!("unknow tool found: {}", tool_type);
+                        return Err(SymbolError::WrongToolOutput);
+                    }
+                };
+                tool_inputs_parsed.push(tool_input);
+            }
 
-        // parse the response over here somehow and figure out what to do with it
-        todo!()
+            Ok(ToolUseAgentOutputWithTools::Success((
+                tool_inputs_parsed,
+                thinking,
+            )))
+        } else {
+            Ok(ToolUseAgentOutputWithTools::Failure)
+        }
     }
 
     pub async fn invoke(

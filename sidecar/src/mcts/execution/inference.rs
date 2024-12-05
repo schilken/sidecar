@@ -144,16 +144,132 @@ impl InferenceEngine {
         }
 
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
-        let execution_and_observe = self
-            .generate_observation_for_node(
+        let execution_and_observe = if self.is_json_mode {
+            self.generate_observation_for_node_json_mode(
                 leaf,
                 search_tree,
                 message_history,
                 tool_box,
                 message_properties,
             )
-            .await;
+            .await
+        } else {
+            self.generate_observation_for_node(
+                leaf,
+                search_tree,
+                message_history,
+                tool_box,
+                message_properties,
+            )
+            .await
+        };
         execution_and_observe
+    }
+
+    async fn generate_observation_for_node_json_mode(
+        &self,
+        current_node: &ActionNode,
+        search_tree: &SearchTree,
+        messages: Vec<LLMClientMessage>,
+        tool_box: Arc<ToolBox>,
+        message_properties: SymbolEventMessageProperties,
+    ) -> Result<InferenceEngineResult, InferenceError> {
+        let tool_use_agent = ToolUseAgent::new(
+            search_tree.llm_client(),
+            search_tree.root_directory(),
+            "linux".to_owned(),
+            "bash".to_owned(),
+            Some(search_tree.repo_name()),
+            false,
+        );
+
+        let mut session_messages = messages
+            .into_iter()
+            .map(|message| SessionChatMessage::from_llm_message(message))
+            .collect::<Vec<_>>();
+
+        // add a reminder for the output format so it never forgets the thinking tag
+        session_messages.push(SessionChatMessage::user(
+            r#" Output format reminder:
+Always include the <thinking></thinking> section before using the tool."#
+                .to_owned(),
+            vec![],
+        ));
+
+        let tool_agent_input = ToolUseAgentInput::new(
+            session_messages,
+            search_tree
+                .tools()
+                .into_iter()
+                .filter_map(|tool_type| tool_box.tools().get_tool_description(&tool_type))
+                .collect(),
+            None,
+            message_properties.clone(),
+        );
+
+        // now create the input for the tool use agent
+        let tool_use_output = tool_use_agent.invoke(tool_agent_input).await;
+
+        // Now we get the tool use output
+        match tool_use_output {
+            Ok(tool_use_parameters) => match tool_use_parameters {
+                // we are going to execute this branch of the code so we can get the output
+                // over here
+                ToolUseAgentOutput::Success((tool_input_partial, _)) => {
+                    let tool_parameters = ActionToolParameters::tool(tool_input_partial.clone());
+                    // we should also detect duplicates over here before we start executing
+                    // before executing the tool, check if the tool parameters are equal
+                    // we can start with doing something very simple before we do a hard thing
+                    let is_duplicate = search_tree.is_duplicate(current_node, &tool_parameters);
+                    if is_duplicate {
+                        Ok(InferenceEngineResult::new(None, tool_parameters, true))
+                    } else {
+                        // TODO(skcd): Execute the tool and generate the observation we need
+                        // for the node
+                        let node_execution_output = self
+                            .execute_tool_and_generate_observation(
+                                tool_input_partial,
+                                tool_box.clone(),
+                                message_properties.clone(),
+                            )
+                            .await;
+                        match node_execution_output {
+                            Ok(observation) => Ok(InferenceEngineResult::new(
+                                Some(observation),
+                                tool_parameters,
+                                false,
+                            )),
+                            Err(e) => Ok(InferenceEngineResult::new(
+                                // when we have an execution error on the tool we are royally
+                                // messed up because we try our best to create an observation
+                                // even for the failure cases, generally this means an infra
+                                // failure so this is terminal
+                                Some(ActionObservation::errored(e.to_string(), false, true)),
+                                tool_parameters,
+                                false,
+                            )),
+                        }
+                    }
+                }
+                ToolUseAgentOutput::Failure(failed_string) => Ok(InferenceEngineResult::new(
+                    Some(ActionObservation::errored(
+                        failed_string.to_owned(),
+                        // we failed to parse the tool output, so we can expect an correction
+                        // over here
+                        true,
+                        false,
+                    )),
+                    ActionToolParameters::errored(failed_string),
+                    false,
+                )),
+            },
+            Err(e) => Ok(InferenceEngineResult::new(
+                // This is an infra error so we can't expect a correction and this is terminal
+                Some(ActionObservation::errored(e.to_string(), false, true)),
+                ActionToolParameters::errored(e.to_string()),
+                false,
+            )),
+        }
     }
 
     async fn generate_observation_for_node(

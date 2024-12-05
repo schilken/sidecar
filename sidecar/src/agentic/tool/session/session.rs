@@ -2732,6 +2732,9 @@ This is part of the file which might not contain the method in full, if thats th
                     UserContext::default(),
                 );
             }
+            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {
+                // we do not use this tool via the session.invoke_tool flow at all
+            }
         }
         Ok(self)
     }

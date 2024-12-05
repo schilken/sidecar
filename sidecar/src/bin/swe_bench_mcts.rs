@@ -55,6 +55,10 @@ struct CliArgs {
     /// Directory to dump all the logs into
     #[arg(long)]
     log_directory: String,
+
+    /// Use json mode strictly
+    #[arg(long, default_value = "false")]
+    json_mode: bool,
 }
 
 /// Define the SWEbenchInstance struct for serialization

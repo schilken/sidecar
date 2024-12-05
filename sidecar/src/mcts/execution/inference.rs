@@ -655,6 +655,9 @@ Output:
                 );
                 Ok(ActionObservation::new(message.to_owned(), message, false))
             }
+            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {
+                todo!("This is to be done, will get to it quickly")
+            }
         }
     }
 }

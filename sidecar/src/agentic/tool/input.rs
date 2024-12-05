@@ -1,5 +1,6 @@
 use super::{
     code_edit::{
+        code_editor::CodeEditorParameters,
         filter_edit::FilterEditOperationRequest,
         find::FindCodeSelectionInput,
         search_and_replace::SearchAndReplaceEditingRequest,
@@ -90,6 +91,7 @@ pub enum ToolInputPartial {
     AttemptCompletion(AttemptCompletionClientRequest),
     RepoMapGeneration(RepoMapGeneratorRequestPartial),
     TestRunner(Vec<String>),
+    CodeEditorParameters(CodeEditorParameters),
 }
 
 impl ToolInputPartial {
@@ -105,6 +107,7 @@ impl ToolInputPartial {
             Self::AttemptCompletion(_) => ToolType::AttemptCompletion,
             Self::RepoMapGeneration(_) => ToolType::RepoMapGeneration,
             Self::TestRunner(_) => ToolType::TestRunner,
+            Self::CodeEditorParameters(_) => ToolType::CodeEditorTool,
         }
     }
 
@@ -122,6 +125,9 @@ impl ToolInputPartial {
             Self::AttemptCompletion(attempt_completion) => attempt_completion.to_string(),
             Self::RepoMapGeneration(repo_map_generator) => repo_map_generator.to_string(),
             Self::TestRunner(fs_file_paths) => fs_file_paths.join(", "),
+            Self::CodeEditorParameters(code_editor_parameters) => {
+                code_editor_parameters.to_string()
+            }
         }
     }
 }

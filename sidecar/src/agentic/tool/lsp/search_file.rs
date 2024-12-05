@@ -160,7 +160,10 @@ impl SearchFileContentInputPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<search_files>
+            r#"<thinking>
+...
+</thinking>
+<search_files>
 <directory_path>
 {}
 </directory_path>

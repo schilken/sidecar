@@ -370,6 +370,7 @@ You are NOT ALLOWED to install any new packages. The dev environment has already
 9. TEST files need to be run using the test_runner command, while the reproduce_error script can be run only using the execute_command tool.
 8. Run test files at the very end so you can catch any regressions in your solution. Some test output might be wrong or conflict the Github Issue so carefully understand the test file and the outcome before commiting to making more changes based on the test output.
 10. All the XML sections for the tool use format should be in a new line, this is important because we parese the tool output line by line.
+11. NEVER forget to include the <thinking></thinking> section before using a tool. We will not be able to invoke the tool properly if you forget it.
 "#
         )
     }

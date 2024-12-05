@@ -50,7 +50,10 @@ impl CodeEditingPartialRequest {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<code_edit_input>
+            r#"<thinking>
+...
+</thinking>
+<code_edit_input>
 <fs_file_path>
 {}
 </fs_file_path>

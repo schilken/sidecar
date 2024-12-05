@@ -185,8 +185,7 @@ impl SearchFileContentInputPartial {
     pub fn to_json() -> serde_json::Value {
         serde_json::json!({
             "name": "search_file",
-            "description": r#"Request to perform a regex search across files in a specified directory, providing context-rich results.
-        This tool searches for patterns or specific content across multiple files, displaying each match with encapsulating context."#,
+            "description": "Request to perform a regex search across files in a specified directory, providing context-rich results.\nThis tool searches for patterns or specific content across multiple files, displaying each match with encapsulating context.",
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -203,8 +202,8 @@ impl SearchFileContentInputPartial {
                         "description": "(optional) Glob pattern to filter files (e.g., '*.ts' for TypeScript files). If not provided, it will search all files (*).",
                     },
                 },
-                "required": ["directory_path", "regex_pattern", "file_pattern"],
-            }
+            },
+            "required": ["directory_path", "regex_pattern", "file_pattern"],
         })
     }
 }

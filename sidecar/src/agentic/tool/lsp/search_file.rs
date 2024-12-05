@@ -181,6 +181,32 @@ impl SearchFileContentInputPartial {
                 .unwrap_or("not provided".to_owned())
         )
     }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "search_file",
+            "description": r#"Request to perform a regex search across files in a specified directory, providing context-rich results.
+        This tool searches for patterns or specific content across multiple files, displaying each match with encapsulating context."#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "directory_path": {
+                        "type": "string",
+                        "description": "(required) The absolute path of the directory to search in. This directory will be recursively searched.",
+                    },
+                    "regex_pattern": {
+                        "type": "string",
+                        "description": "(required) The regular expression pattern to search for. Uses Rust regex syntax.",
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "(optional) Glob pattern to filter files (e.g., '*.ts' for TypeScript files). If not provided, it will search all files (*).",
+                    },
+                },
+                "required": ["directory_path", "regex_pattern", "file_pattern"],
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

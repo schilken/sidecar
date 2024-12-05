@@ -47,6 +47,23 @@ impl AttemptCompletionClientRequest {
                 .unwrap_or("no command provided".to_owned())
         )
     }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "attempt_completion",
+            "description": r#"Use this when you have resolved the Github Issue and solved it completely or you have enough evidence to suggest that the Github Issue has been resolved after your changes."#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "result": {
+                        "type": "string",
+                        "description": "(required) The result of the task. Formulate this result in a way that is final and does not require further input from the user. Don't end your result with questions or offers for further assistance.",
+                    }
+                }
+            },
+            "required": ["result"],
+        })
+    }
 }
 
 #[derive(Debug, Clone)]

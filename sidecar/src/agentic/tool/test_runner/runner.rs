@@ -15,6 +15,36 @@ pub struct TestRunnerRequest {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TestRunnerRequestPartial {
+    fs_file_paths: Vec<String>,
+}
+
+impl TestRunnerRequestPartial {
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "test_runner",
+            "description": r#"Runs the tests in the provided files
+
+# Requirements:
+You should verify where the test files are located, only use test_runner tool after you have this information"#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "fs_file_paths": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "(required) A list of file paths to run tests for, separated by newlines",
+                    },
+                }
+            },
+            "required": ["fs_file_paths"],
+        })
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestRunnerResponse {
     test_output: String,
     exit_code: i32,

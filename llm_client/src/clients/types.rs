@@ -376,7 +376,7 @@ pub struct LLMClientMessage {
     role: LLMClientRole,
     message: String,
     images: Vec<LLMClientMessageImage>,
-    tools: Vec<LLMClientMessageTool>,
+    tools: Vec<serde_json::Value>,
     function_call: Option<LLMClientMessageFunctionCall>,
     function_return: Option<LLMClientMessageFunctionReturn>,
     // if this message marks a caching point in the overall message
@@ -517,11 +517,16 @@ impl LLMClientMessage {
         self.images.as_slice()
     }
 
-    pub fn tools(&self) -> &[LLMClientMessageTool] {
+    pub fn tools(&self) -> &[serde_json::Value] {
         &self.tools.as_slice()
     }
 
-    pub fn insert_tool(mut self, tool: LLMClientMessageTool) -> Self {
+    pub fn insert_tools(mut self, tools: Vec<serde_json::Value>) -> Self {
+        self.tools.extend(tools);
+        self
+    }
+
+    pub fn insert_tool(mut self, tool: serde_json::Value) -> Self {
         self.tools.push(tool);
         self
     }

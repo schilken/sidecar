@@ -175,20 +175,13 @@ enum ContentBlockDeltaType {
     },
 }
 
-// We are implementing this only for the str_replace editor and nothing else
-// we will expand on this later
-#[derive(serde::Serialize, Debug, Clone)]
-pub struct AnthropicTool {
-    name: String,
-    r#type: String,
-}
-
 #[derive(serde::Serialize, Debug, Clone)]
 struct AnthropicRequest {
     system: Vec<AnthropicMessageContent>,
     messages: Vec<AnthropicMessage>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tools: Vec<AnthropicTool>,
+    /// This is going to be such a fucking nightmare later on...
+    tools: Vec<serde_json::Value>,
     temperature: f32,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -218,16 +211,10 @@ impl AnthropicRequest {
         let tools = messages
             .iter()
             .map(|message| {
-                message.tools().into_iter().filter_map(|tool| {
-                    if tool.has_type() {
-                        Some(AnthropicTool {
-                            name: tool.name().to_owned(),
-                            r#type: tool.r#type().expect("has_type to hold"),
-                        })
-                    } else {
-                        None
-                    }
-                })
+                message
+                    .tools()
+                    .into_iter()
+                    .filter_map(|tool| Some(tool.clone()))
             })
             .flatten()
             .collect::<Vec<_>>();

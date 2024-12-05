@@ -38,6 +38,26 @@ use super::{
     attempt_completion::AttemptCompletionClientRequest, chat::SessionChatMessage,
 };
 
+pub struct ToolUseAgentInputOnlyTools {
+    session_messages: Vec<SessionChatMessage>,
+    tools: Vec<serde_json::Value>,
+    symbol_event_message_properties: SymbolEventMessageProperties,
+}
+
+impl ToolUseAgentInputOnlyTools {
+    pub fn new(
+        session_messages: Vec<SessionChatMessage>,
+        tools: Vec<serde_json::Value>,
+        symbol_event_message_properties: SymbolEventMessageProperties,
+    ) -> Self {
+        Self {
+            session_messages,
+            tools,
+            symbol_event_message_properties,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct ToolUseAgentInput {
     // pass in the messages
@@ -646,11 +666,12 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
     /// else right now
     pub async fn invoke_json_tool(
         &self,
-        input: ToolUseAgentInput,
+        input: ToolUseAgentInputOnlyTools,
     ) -> Result<ToolUseAgentOutputWithTools, SymbolError> {
         let repo_name = self.swe_bench_repo_name.clone().expect("to be present");
         let system_message =
-            LLMClientMessage::system(self.system_message_for_swe_bench_json_mode(&repo_name));
+            LLMClientMessage::system(self.system_message_for_swe_bench_json_mode(&repo_name))
+                .insert_tools(input.tools);
         // grab the previous messages as well
         let llm_properties = input
             .symbol_event_message_properties

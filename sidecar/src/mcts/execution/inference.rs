@@ -19,7 +19,10 @@ use crate::{
             repo_map::generator::RepoMapGeneratorRequest,
             session::{
                 chat::SessionChatMessage,
-                tool_use_agent::{ToolUseAgent, ToolUseAgentInput, ToolUseAgentOutput},
+                tool_use_agent::{
+                    ToolUseAgent, ToolUseAgentInput, ToolUseAgentInputOnlyTools,
+                    ToolUseAgentOutput, ToolUseAgentOutputWithTools,
+                },
             },
             terminal::terminal::TerminalInput,
             test_runner::runner::TestRunnerRequest,
@@ -196,26 +199,41 @@ Always include the <thinking></thinking> section before using the tool."#
             vec![],
         ));
 
-        let tool_agent_input = ToolUseAgentInput::new(
+        let tool_agent_input = ToolUseAgentInputOnlyTools::new(
             session_messages,
             search_tree
                 .tools()
                 .into_iter()
-                .filter_map(|tool_type| tool_box.tools().get_tool_description(&tool_type))
+                .filter_map(|tool_type| tool_box.tools().get_tool_json(&tool_type))
                 .collect(),
-            None,
             message_properties.clone(),
         );
 
         // now create the input for the tool use agent
-        let tool_use_output = tool_use_agent.invoke(tool_agent_input).await;
+        let tool_use_output = tool_use_agent.invoke_json_tool(tool_agent_input).await;
 
         // Now we get the tool use output
         match tool_use_output {
             Ok(tool_use_parameters) => match tool_use_parameters {
                 // we are going to execute this branch of the code so we can get the output
                 // over here
-                ToolUseAgentOutput::Success((tool_input_partial, _)) => {
+                ToolUseAgentOutputWithTools::Success((tool_input_partial, _)) => {
+                    if tool_input_partial.is_empty() {
+                        return Ok(InferenceEngineResult::new(
+                            Some(ActionObservation::errored(
+                                "failed to use any tool, please be careful".to_owned(),
+                                // we failed to parse the tool output, so we can expect an correction
+                                // over here
+                                true,
+                                false,
+                            )),
+                            ActionToolParameters::errored(
+                                "failed to use any tool, please be careful".to_owned(),
+                            ),
+                            false,
+                        ));
+                    }
+                    let tool_input_partial = tool_input_partial[0].clone();
                     let tool_parameters = ActionToolParameters::tool(tool_input_partial.clone());
                     // we should also detect duplicates over here before we start executing
                     // before executing the tool, check if the tool parameters are equal
@@ -251,17 +269,21 @@ Always include the <thinking></thinking> section before using the tool."#
                         }
                     }
                 }
-                ToolUseAgentOutput::Failure(failed_string) => Ok(InferenceEngineResult::new(
-                    Some(ActionObservation::errored(
-                        failed_string.to_owned(),
-                        // we failed to parse the tool output, so we can expect an correction
-                        // over here
-                        true,
+                ToolUseAgentOutputWithTools::Failure => {
+                    Ok(InferenceEngineResult::new(
+                        Some(ActionObservation::errored(
+                            "Failed to generate a tool to use".to_owned(),
+                            // we failed to parse the tool output, so we can expect an correction
+                            // over here
+                            true,
+                            false,
+                        )),
+                        ActionToolParameters::errored(
+                            "Failed to generate a tool to use".to_owned(),
+                        ),
                         false,
-                    )),
-                    ActionToolParameters::errored(failed_string),
-                    false,
-                )),
+                    ))
+                }
             },
             Err(e) => Ok(InferenceEngineResult::new(
                 // This is an infra error so we can't expect a correction and this is terminal

@@ -34,7 +34,7 @@ use super::{
     filtering::broker::CodeToEditFormatterBroker,
     git::{diff_client::GitDiffClient, edited_files::EditedFiles},
     grep::file::FindInFile,
-    input::ToolInput,
+    input::{ToolInput, ToolInputPartial},
     lsp::{
         create_file::LSPCreateFile,
         diagnostics::LSPDiagnostics,
@@ -494,6 +494,10 @@ impl ToolBroker {
         } else {
             None
         }
+    }
+
+    pub fn get_tool_json(&self, tool_type: &ToolType) -> Option<serde_json::Value> {
+        ToolInputPartial::to_json(tool_type.clone())
     }
 }
 

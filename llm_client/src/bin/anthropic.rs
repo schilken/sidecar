@@ -1,4 +1,3 @@
-use llm_client::clients::types::LLMClientMessageTool;
 use llm_client::{
     clients::{
         anthropic::AnthropicClient,
@@ -70,7 +69,10 @@ pub enum FrameworkEvent {
     /// Contains an OpenFileRequest which probably includes the file path and other relevant details.
     OpenFile(OpenFileRequest),
 }
-</code_changes_outline>"#.to_owned()).insert_tool(LLMClientMessageTool::with_type("str_replace_editor".to_owned(), "text_editor_20241022".to_owned()))],
+</code_changes_outline>"#.to_owned()).insert_tool(serde_json::json!({
+    "name": "str_replace_editor",
+    "type": "text_editor_20241022",
+}))],
         1.0,
         None,
     );

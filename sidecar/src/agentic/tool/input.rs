@@ -130,6 +130,23 @@ impl ToolInputPartial {
             }
         }
     }
+
+    pub fn to_json(tool_type: ToolType) -> Option<serde_json::Value> {
+        match tool_type {
+            ToolType::CodeEditing => None,
+            ToolType::ListFiles => Some(ListFilesInput::to_json()),
+            ToolType::SearchFileContentWithRegex => Some(SearchFileContentInputPartial::to_json()),
+            ToolType::OpenFile => Some(OpenFileRequestPartial::to_json()),
+            ToolType::LSPDiagnostics => None,
+            ToolType::TerminalCommand => Some(TerminalInputPartial::to_json()),
+            ToolType::AskFollowupQuestions => None,
+            ToolType::AttemptCompletion => Some(AttemptCompletionClientRequest::to_json()),
+            ToolType::RepoMapGeneration => None,
+            ToolType::TestRunner => Some(TestRunnerRequestPartial::to_json()),
+            ToolType::CodeEditorTool => Some(CodeEditorParameters::to_json()),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

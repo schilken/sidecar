@@ -76,7 +76,7 @@ use super::{
     },
     swe_bench::test_tool::SWEBenchTestRequest,
     terminal::terminal::{TerminalInput, TerminalInputPartial},
-    test_runner::runner::TestRunnerRequest,
+    test_runner::runner::{TestRunnerRequest, TestRunnerRequestPartial},
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -90,7 +90,7 @@ pub enum ToolInputPartial {
     AskFollowupQuestions(AskFollowupQuestionsRequest),
     AttemptCompletion(AttemptCompletionClientRequest),
     RepoMapGeneration(RepoMapGeneratorRequestPartial),
-    TestRunner(Vec<String>),
+    TestRunner(TestRunnerRequestPartial),
     CodeEditorParameters(CodeEditorParameters),
 }
 
@@ -124,7 +124,7 @@ impl ToolInputPartial {
             Self::AskFollowupQuestions(ask_followup_question) => ask_followup_question.to_string(),
             Self::AttemptCompletion(attempt_completion) => attempt_completion.to_string(),
             Self::RepoMapGeneration(repo_map_generator) => repo_map_generator.to_string(),
-            Self::TestRunner(fs_file_paths) => fs_file_paths.join(", "),
+            Self::TestRunner(test_runner_partial_output) => test_runner_partial_output.to_string(),
             Self::CodeEditorParameters(code_editor_parameters) => {
                 code_editor_parameters.to_string()
             }

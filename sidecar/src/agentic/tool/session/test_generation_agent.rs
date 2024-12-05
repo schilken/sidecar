@@ -32,6 +32,7 @@ use crate::agentic::{
         repo_map::generator::RepoMapGeneratorRequestPartial,
         session::chat::SessionChatRole,
         terminal::terminal::TerminalInputPartial,
+        test_runner::runner::TestRunnerRequestPartial,
     },
 };
 
@@ -956,8 +957,9 @@ impl ToolUseGenerator {
                         self.tool_type_possible = None;
                         match self.fs_file_paths.clone() {
                             Some(fs_file_paths) => {
-                                self.tool_input_partial =
-                                    Some(ToolInputPartial::TestRunner(fs_file_paths));
+                                self.tool_input_partial = Some(ToolInputPartial::TestRunner(
+                                    TestRunnerRequestPartial::new(fs_file_paths),
+                                ));
                             }
                             _ => {}
                         }

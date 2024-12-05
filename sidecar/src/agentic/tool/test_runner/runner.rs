@@ -20,6 +20,20 @@ pub struct TestRunnerRequestPartial {
 }
 
 impl TestRunnerRequestPartial {
+    pub fn new(file_paths: Vec<String>) -> Self {
+        Self {
+            fs_file_paths: file_paths,
+        }
+    }
+
+    pub fn fs_file_paths(self) -> Vec<String> {
+        self.fs_file_paths.to_vec()
+    }
+
+    pub fn to_string(&self) -> String {
+        self.fs_file_paths.to_vec().join(" ,")
+    }
+
     pub fn to_json() -> serde_json::Value {
         serde_json::json!({
             "name": "test_runner",

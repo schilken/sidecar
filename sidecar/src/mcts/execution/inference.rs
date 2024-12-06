@@ -308,8 +308,6 @@ impl InferenceEngine {
                     if is_duplicate {
                         Ok(InferenceEngineResult::new(None, tool_parameters, true))
                     } else {
-                        // TODO(skcd): Execute the tool and generate the observation we need
-                        // for the node
                         let node_execution_output = self
                             .execute_tool_and_generate_observation(
                                 tool_input_partial,

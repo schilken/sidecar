@@ -46,7 +46,7 @@ impl AnthropicCodeEditor {
                         "Parameter `file_text` required for `create`.".to_owned(),
                     )
                 })?;
-                self.create(&path, &file_text).await
+                dbg!(self.create(&path, &file_text).await)
             }
             EditorCommand::StrReplace => {
                 let old_str = params.old_str.ok_or_else(|| {
@@ -55,7 +55,7 @@ impl AnthropicCodeEditor {
                     )
                 })?;
                 let new_str = params.new_str;
-                self.str_replace(&path, &old_str, new_str.as_deref()).await
+                dbg!(self.str_replace(&path, &old_str, new_str.as_deref()).await)
             }
             EditorCommand::Insert => {
                 let insert_line = params.insert_line.ok_or_else(|| {
@@ -81,16 +81,18 @@ impl AnthropicCodeEditor {
     fn validate_path(&self, command: &EditorCommand, path: &Path) -> Option<ActionObservation> {
         match command {
             EditorCommand::Create => {
-                if path.exists() {
-                    return Some(ActionObservation::errored(
-                        format!(
-                            "File already exists at: {:?}. Cannot overwrite with `create`.",
-                            path
-                        ),
-                        true,
-                        false,
-                    ));
-                }
+                // Disable this check since we are okay with creating files which
+                // already exist
+                // if path.exists() {
+                //     return Some(ActionObservation::errored(
+                //         format!(
+                //             "File already exists at: {:?}. Cannot overwrite with `create`.",
+                //             path
+                //         ),
+                //         true,
+                //         false,
+                //     ));
+                // }
             }
             _ => {
                 if !path.exists() {

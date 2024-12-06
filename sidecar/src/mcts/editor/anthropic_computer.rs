@@ -36,12 +36,10 @@ impl AnthropicCodeEditor {
         }
 
         match params.command {
-            EditorCommand::View => Ok(ActionObservation::errored(
-                "view not supported, use list_files or file_open instead".to_owned(),
-                true,
-                false,
-            )),
-            // EditorCommand::View => self.view(&path, params.view_range),
+            EditorCommand::View => self
+                .view(&path, params.view_range)
+                .await
+                .map(|output| ActionObservation::new(output.to_owned(), output.to_owned(), false)),
             EditorCommand::Create => {
                 let file_text = params.file_text.ok_or_else(|| {
                     AnthropicEditorError::InputParametersMissing(
@@ -131,76 +129,84 @@ impl AnthropicCodeEditor {
             .file_content_updated(path.to_string_lossy().to_string(), file_text.to_owned()))
     }
 
-    // fn view(&self, path: &Path, view_range: Option<Vec<i32>>) -> Result<String, ToolError> {
-    //     if path.is_dir() {
-    //         if view_range.is_some() {
-    //             return Err(ToolError::new(
-    //                 "The `view_range` is not allowed for directories.",
-    //             ));
-    //         }
-    //         return self.view_directory(path);
-    //     }
+    async fn view(
+        &self,
+        path: &Path,
+        view_range: Option<Vec<i32>>,
+    ) -> Result<String, AnthropicEditorError> {
+        if path.is_dir() {
+            if view_range.is_some() {
+                return Err(AnthropicEditorError::ViewCommandError(
+                    "The `view_range` is not allowed for directories.".to_owned(),
+                ));
+            }
+            return self.view_directory(path);
+        }
 
-    //     let file_content = self.read_file(path)?;
-    //     let (content, init_line) = if let Some(range) = view_range {
-    //         if range.len() != 2 {
-    //             return Err(ToolError::new(
-    //                 "`view_range` should be a list of two integers.",
-    //             ));
-    //         }
-    //         let (start, end) = (range[0], range[1]);
-    //         let file_lines: Vec<&str> = file_content.lines().collect();
-    //         let n_lines = file_lines.len() as i32;
+        let file_content = self.read_file(path).await?;
+        let (content, init_line) = if let Some(range) = view_range {
+            if range.len() != 2 {
+                return Err(AnthropicEditorError::ViewCommandError(
+                    "`view_range` should be a list of two integers.".to_owned(),
+                ));
+            }
+            let (start, end) = (range[0], range[1]);
+            let file_lines: Vec<&str> = file_content.lines().collect();
+            let n_lines = file_lines.len() as i32;
 
-    //         if start < 1 || start > n_lines {
-    //             return Err(ToolError::new(&format!(
-    //                 "Invalid start line {} for range. Should be between 1 and {}.",
-    //                 start, n_lines
-    //             )));
-    //         }
+            if start < 1 || start > n_lines {
+                return Err(AnthropicEditorError::ViewCommandError(format!(
+                    "Invalid start line {} for range. Should be between 1 and {}.",
+                    start, n_lines
+                )));
+            }
 
-    //         if end != -1 && (end < start || end > n_lines) {
-    //             return Err(ToolError::new(&format!(
-    //                 "Invalid end line {} for range. Should be >= {} and <= {} or -1.",
-    //                 end, start, n_lines
-    //             )));
-    //         }
+            if end != -1 && (end < start || end > n_lines) {
+                return Err(AnthropicEditorError::ViewCommandError(format!(
+                    "Invalid end line {} for range. Should be >= {} and <= {} or -1.",
+                    end, start, n_lines
+                )));
+            }
 
-    //         let slice = if end == -1 {
-    //             &file_lines[(start - 1) as usize..]
-    //         } else {
-    //             &file_lines[(start - 1) as usize..end as usize]
-    //         };
+            let slice = if end == -1 {
+                &file_lines[(start - 1) as usize..]
+            } else {
+                &file_lines[(start - 1) as usize..end as usize]
+            };
 
-    //         (slice.join("\n"), start)
-    //     } else {
-    //         (file_content, 1)
-    //     };
+            (slice.join("\n"), start)
+        } else {
+            (file_content, 1)
+        };
 
-    //     Ok(self.make_output(&content, &format!("{:?}", path), init_line))
-    // }
+        Ok(self.make_output(&content, &format!("{:?}", path), init_line))
+    }
 
-    // fn view_directory(&self, path: &Path) -> Result<String, ToolError> {
-    //     let entries = fs::read_dir(path)
-    //         .map_err(|e| ToolError::new(&format!("Error reading directory: {:?}", e)))?;
+    fn view_directory(&self, path: &Path) -> Result<String, AnthropicEditorError> {
+        let entries = std::fs::read_dir(path).map_err(|e| {
+            AnthropicEditorError::ViewCommandError(format!("Error reading directory: {:?}", e))
+        })?;
 
-    //     let mut output = format!(
-    //         "Listing files and directories (excluding hidden) in {:?}:\n",
-    //         path
-    //     );
-    //     for entry in entries {
-    //         let entry = entry.map_err(|e| ToolError::new(&format!("Dir entry error: {:?}", e)))?;
-    //         let file_name = entry
-    //             .file_name()
-    //             .into_string()
-    //             .unwrap_or_else(|_| "<non-UTF8>".to_string());
-    //         if file_name.starts_with('.') {
-    //             continue; // Skip hidden files
-    //         }
-    //         output.push_str(&format!("{}/{}\n", path.display(), file_name));
-    //     }
-    //     Ok(output)
-    // }
+        let mut output = format!(
+            "Listing files and directories (excluding hidden) in {:?}:\n",
+            path
+        );
+
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                AnthropicEditorError::ViewCommandError(format!("Dir entry error: {:?}", e))
+            })?;
+            let file_name = entry
+                .file_name()
+                .into_string()
+                .unwrap_or_else(|_| "<non-UTF8>".to_string());
+            if file_name.starts_with('.') {
+                continue; // Skip hidden files
+            }
+            output.push_str(&format!("{}/{}\n", path.display(), file_name));
+        }
+        Ok(output)
+    }
 
     async fn str_replace(
         &self,

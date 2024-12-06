@@ -337,6 +337,8 @@ pub struct SearchTree {
     log_directory: String,
     /// The tools are in json mode?
     is_json_mode: bool,
+    /// The agent is in midwit mode.. very basic
+    is_midwit_mode: bool,
 }
 
 impl SearchTree {
@@ -356,6 +358,7 @@ impl SearchTree {
         llm_client: Arc<LLMBroker>,
         log_directory: String,
         is_json_mode: bool,
+        is_midwit_mode: bool,
     ) -> Self {
         let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
@@ -377,6 +380,7 @@ impl SearchTree {
             repo_name,
             log_directory,
             is_json_mode,
+            is_midwit_mode,
         }
     }
     pub fn root(&self) -> Option<&ActionNode> {
@@ -1239,7 +1243,7 @@ impl SearchTree {
         // trajectory
         let nodes_trajectory = self.trajectory(node_index);
 
-        let inference_engine = InferenceEngine::new(self.is_json_mode);
+        let inference_engine = InferenceEngine::new(self.is_json_mode, self.is_midwit_mode);
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node

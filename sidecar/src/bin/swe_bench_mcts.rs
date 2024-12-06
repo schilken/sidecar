@@ -59,6 +59,10 @@ struct CliArgs {
     /// Use json mode strictly
     #[arg(long, default_value = "true")]
     json_mode: bool,
+
+    /// Use midwit mode (aka sonnet3.5 with tool)
+    #[arg(long, default_value = "true")]
+    midwit_mode: bool,
 }
 
 /// Define the SWEbenchInstance struct for serialization
@@ -160,10 +164,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_configuration,
     );
 
-    let tools = vec![
+    let mut tools = vec![
         ToolType::ListFiles,
         ToolType::SearchFileContentWithRegex,
-        ToolType::OpenFile,
         // if we are in json mode then select the code editor tool
         if args.json_mode {
             ToolType::CodeEditorTool
@@ -171,10 +174,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ToolType::CodeEditing
         },
         ToolType::AttemptCompletion,
-        ToolType::RepoMapGeneration,
         ToolType::TerminalCommand,
-        ToolType::TestRunner,
     ];
+
+    if !args.midwit_mode {
+        tools.push(ToolType::TestRunner);
+    }
+
+    // add the open file only if we are not in the json mode
+    if !args.json_mode {
+        tools.push(ToolType::OpenFile);
+    }
 
     let selector = Selector::new(
         1.0,                         // exploitation_weight
@@ -213,6 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         llm_broker,                             // llm_client
         log_directory,                          // log directory
         args.json_mode,                         // json mode
+        args.midwit_mode,                       // midwit mode
     );
 
     // Run the search

@@ -71,11 +71,15 @@ impl InferenceEngineResult {
 
 pub struct InferenceEngine {
     is_json_mode: bool,
+    is_midwit_mode: bool,
 }
 
 impl InferenceEngine {
-    pub fn new(is_json_mode: bool) -> Self {
-        Self { is_json_mode }
+    pub fn new(is_json_mode: bool, is_midwit_mode: bool) -> Self {
+        Self {
+            is_json_mode,
+            is_midwit_mode,
+        }
     }
 
     pub async fn execute(
@@ -124,9 +128,12 @@ impl InferenceEngine {
         // message history
         let mut message_history = vec![];
 
+        let mut problem_statment = None;
+
         // Now create the messages for the previous nodes which we have
         for (_index, current_node) in root_to_leaf_direction.iter().enumerate() {
             if let Some(message) = current_node.message() {
+                problem_statment = Some(message.to_owned());
                 message_history.push(LLMClientMessage::user(message));
             }
 
@@ -205,6 +212,7 @@ impl InferenceEngine {
                 leaf,
                 search_tree,
                 message_history,
+                problem_statment.expect("to be alway present in the tree"),
                 tool_box,
                 message_properties,
             )
@@ -227,6 +235,7 @@ impl InferenceEngine {
         current_node: &ActionNode,
         search_tree: &SearchTree,
         messages: Vec<LLMClientMessage>,
+        problem_statement: String,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<InferenceEngineResult, InferenceError> {
@@ -260,6 +269,8 @@ impl InferenceEngine {
                 .into_iter()
                 .filter_map(|tool_type| tool_box.tools().get_tool_json(&tool_type))
                 .collect(),
+            problem_statement,
+            self.is_midwit_mode,
             message_properties.clone(),
         );
 

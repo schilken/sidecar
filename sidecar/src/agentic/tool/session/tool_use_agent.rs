@@ -41,6 +41,8 @@ use super::{
 pub struct ToolUseAgentInputOnlyTools {
     session_messages: Vec<SessionChatMessage>,
     tools: Vec<serde_json::Value>,
+    problem_statement: String,
+    is_midwit_mode: bool,
     symbol_event_message_properties: SymbolEventMessageProperties,
 }
 
@@ -48,11 +50,15 @@ impl ToolUseAgentInputOnlyTools {
     pub fn new(
         session_messages: Vec<SessionChatMessage>,
         tools: Vec<serde_json::Value>,
+        problem_statement: String,
+        is_midwit_mode: bool,
         symbol_event_message_properties: SymbolEventMessageProperties,
     ) -> Self {
         Self {
             session_messages,
             tools,
+            problem_statement,
+            is_midwit_mode,
             symbol_event_message_properties,
         }
     }
@@ -290,6 +296,41 @@ The problem is a Github Issue on {repo_name}
             .join("\n")
     }
 
+    fn system_message_midwit_json_mode(&self, repo_name: &str, problem_statement: &str) -> String {
+        let working_directory = self.working_directory.to_owned();
+        format!(
+            r#"You are an expert software engineer taked with solving the <pr_description> the I am going to provide. You are an expert at {repo_name} and you will be given a list of tools which you can use one after the other to debug and fix the <pr_description>.
+<uploaded_files>
+{working_directory}
+</uploaded_files>
+I've uploaded a python code repository in the directory {working_directory} (not in /tmp/inputs). Consider the following PR description:
+
+<pr_description>
+{problem_statement}
+</pr_description>
+
+Can you help me implement the necessary changes to the repository {repo_name} so that the requirements specified in the <pr_description> are met?
+I've already taken care of all changes to any of the test files described in the <pr_description>. This means you DON'T have to modify the testing logic or any of the tests in any way!
+I've also setup the developer environment in {working_directory} for {repo_name}. This means you DON'T have to install any new libraries in any way!
+
+Your task is to make the minimal changes to non-tests files in the /repo directory to ensure the <pr_description> is satisfied.
+
+Follow these steps to resolve the issue:
+1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
+2. Create a script called reproduce_error.py to reproduce the error and execute it with `python reproduce_error.py` using the execute_command tool, to confirm the error
+3. Edit the sourcecode of the repo to resolve the issue
+4. Rerun your reproduce script and confirm that the error is fixed!
+5. Think about edgecases and make sure your fix handles them as well
+
+Your thinking should be thorough and so it's fine if it's very long.
+This is super important and before using any tool you have to output your thinking in <thinking> section like this:'
+<thinking>
+{{your thoughts about using the tool}}
+</thinking>
+NEVER forget to include the <thinking></thinking> section before using a tool. We will not be able to invoke the tool properly if you forget it"#
+        )
+    }
+
     fn system_message_for_swe_bench_json_mode(&self, repo_name: &str) -> String {
         let working_directory = self.working_directory.to_owned();
         let operating_system = self.operating_system.to_owned();
@@ -303,7 +344,7 @@ TOOL USE
 
 You have access to a set of tools. You can use one tool per message (and only one), and you will receive the result of the tool use from the user. You should use the tools step-by-step to accomplish the user task.
 You use the previous information which you get from using the tools to inform your next tool usage.
-You should always output the <thinking></thinking> section before using a tool and we are showing you an example
+You should always output the <thinking></thinking> section before using a tool
 
 # Tool Use Guidelines
 
@@ -672,9 +713,13 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         input: ToolUseAgentInputOnlyTools,
     ) -> Result<ToolUseAgentOutputWithTools, SymbolError> {
         let repo_name = self.swe_bench_repo_name.clone().expect("to be present");
-        let system_message =
-            LLMClientMessage::system(self.system_message_for_swe_bench_json_mode(&repo_name))
-                .insert_tools(input.tools);
+        let problem_statement = &input.problem_statement;
+        let system_message = LLMClientMessage::system(if input.is_midwit_mode {
+            self.system_message_midwit_json_mode(&repo_name, problem_statement)
+        } else {
+            self.system_message_for_swe_bench_json_mode(&repo_name)
+        })
+        .insert_tools(input.tools);
         // grab the previous messages as well
         let llm_properties = input
             .symbol_event_message_properties

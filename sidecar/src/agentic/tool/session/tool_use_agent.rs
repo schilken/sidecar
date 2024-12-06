@@ -320,6 +320,17 @@ Tool capabilities:
 - You can use search_files to perform regex searches across files in a specified directory, outputting context-rich results that include surrounding lines. This is particularly useful for understanding code patterns, finding specific implementations, or identifying areas that need refactoring.
 - When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility
 
+====
+
+SYSTEM INFORMATION
+
+Operating System: linux
+Default Shell: bash
+Current Working Directory: {working_directory}
+Current Repo Name: {repo_name}
+
+====
+
 FOLLOW these steps to resolve the issue:
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
 2. Create a script called reproduce_error.py to reproduce the error and execute it with `python reproduce_error.py` using the execute_command tool, to confirm the error

@@ -127,7 +127,8 @@ impl AnthropicCodeEditor {
         self.write_file(path, file_text).await?;
 
         let message = format!("File created successfully at: {:?}", path);
-        Ok(ActionObservation::new(message.to_owned(), message, false))
+        Ok(ActionObservation::new(message.to_owned(), message, false)
+            .file_content_updated(path.to_string_lossy().to_string(), file_text.to_owned()))
     }
 
     // fn view(&self, path: &Path, view_range: Option<Vec<i32>>) -> Result<String, ToolError> {
@@ -242,11 +243,12 @@ impl AnthropicCodeEditor {
         let mut msg = format!("The file {:?} has been edited. ", path);
         msg.push_str(&self.make_output(&snippet, &format!("a snippet of {:?}", path), 1));
         msg.push_str("Review the changes if necessary.");
-        Ok(ActionObservation::new(
-            msg.to_owned(),
-            msg.to_owned(),
-            false,
-        ))
+        Ok(
+            ActionObservation::new(msg.to_owned(), msg.to_owned(), false).file_content_updated(
+                path.to_string_lossy().to_string(),
+                new_file_content.to_owned(),
+            ),
+        )
     }
 
     async fn insert(
@@ -289,11 +291,10 @@ impl AnthropicCodeEditor {
         msg.push_str(
             "Review the changes and make sure they are correct (indentation, no duplicates, etc).",
         );
-        Ok(ActionObservation::new(
-            msg.to_owned(),
-            msg.to_owned(),
-            false,
-        ))
+        Ok(
+            ActionObservation::new(msg.to_owned(), msg.to_owned(), false)
+                .file_content_updated(path.to_string_lossy().to_string(), new_file_text),
+        )
     }
 
     async fn read_file(&self, path: &Path) -> Result<String, AnthropicEditorError> {

@@ -1390,6 +1390,22 @@ impl SearchTree {
             .await
             .expect("to work");
 
+        let git_diff_output = tokio::process::Command::new("git")
+            .arg("diff")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .current_dir(self.root_directory.to_owned())
+            .output()
+            .await;
+
+        if let Ok(git_diff_output) = git_diff_output {
+            println!(
+                "post_rest::git_diff_output:({})::stderr({})",
+                String::from_utf8(git_diff_output.stdout).expect("to work"),
+                String::from_utf8(git_diff_output.stderr).expect("to work")
+            );
+        }
+
         // now update the file system to the current node
         for file_variable in node
             .user_context()

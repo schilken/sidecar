@@ -830,7 +830,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                             SymbolError::ToolError(ToolError::SerdeConversionFailed)
                         })?,
                     ),
-                    "search_file" => ToolInputPartial::SearchFileContentWithRegex(
+                    "search_files" => ToolInputPartial::SearchFileContentWithRegex(
                         serde_json::from_str::<SearchFileContentInputPartial>(&tool_input)
                             .map_err(|_e| {
                                 SymbolError::ToolError(ToolError::SerdeConversionFailed)

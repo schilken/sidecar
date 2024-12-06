@@ -184,7 +184,7 @@ impl SearchFileContentInputPartial {
 
     pub fn to_json() -> serde_json::Value {
         serde_json::json!({
-            "name": "search_file",
+            "name": "search_files",
             "description": "Request to perform a regex search across files in a specified directory, providing context-rich results.\nThis tool searches for patterns or specific content across multiple files, displaying each match with encapsulating context.",
             "input_schema": {
                 "type": "object",

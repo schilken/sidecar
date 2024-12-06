@@ -1079,7 +1079,8 @@ impl SearchTree {
             let child_node = self.get_node(children_index);
             if let Some(child_node) = child_node {
                 // the child is not executed so we grab it
-                if child_node.observation.is_none() {
+                // and also not a duplicate since duplicates do not have observation
+                if child_node.observation.is_none() && !child_node.is_duplicate {
                     return Some(child_node.index);
                 }
             }

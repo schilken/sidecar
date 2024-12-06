@@ -333,7 +333,7 @@ Current Repo Name: {repo_name}
 
 FOLLOW these steps to resolve the issue:
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
-2. Create a script called reproduce_error.py to reproduce the error and execute it with `python reproduce_error.py` using the execute_command tool, to confirm the error
+2. Create a script called reproduce_error.py to reproduce the error and execute it with *`python reproduce_error.py`* (It is important you use the exact command) using the execute_command tool, to confirm the error.
 3. Edit the sourcecode of the repo to resolve the issue
 4. Rerun your reproduce script and confirm that the error is fixed!
 5. Think about edgecases and make sure your fix handles them as well

@@ -271,6 +271,8 @@ impl Tool for SearchFileContentClient {
         let file_pattern = &context.file_pattern.unwrap_or("*".to_owned());
         let args = vec![
             "--json",
+            // enables lookaround
+            "--pcre2",
             "-e",
             regex_pattern,
             "--glob",

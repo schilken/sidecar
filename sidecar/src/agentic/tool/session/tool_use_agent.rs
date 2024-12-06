@@ -318,6 +318,7 @@ Your task is to make the minimal changes to non-tests files in the /repo directo
 Tool capabilities:
 - You have access to tools that let you execute CLI commands on the local checkout, list files, view source code definitions, regex search, read and write files. These tools help you effectively accomplish a wide range of tasks, such as writing code, making edits or improvements to existing files, understanding the current state of a project, and much more.
 - You can use search_files to perform regex searches across files in a specified directory, outputting context-rich results that include surrounding lines. This is particularly useful for understanding code patterns, finding specific implementations, or identifying areas that need refactoring.
+- When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility
 
 FOLLOW these steps to resolve the issue:
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.

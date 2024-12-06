@@ -8,7 +8,8 @@ use crate::provider::{LLMProvider, LLMProviderAPIKeys};
 
 use super::types::{
     LLMClient, LLMClientCompletionRequest, LLMClientCompletionResponse,
-    LLMClientCompletionStringRequest, LLMClientError, LLMClientMessageImage, LLMType,
+    LLMClientCompletionStringRequest, LLMClientError, LLMClientMessageImage, LLMClientToolReturn,
+    LLMClientToolUse, LLMType,
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -32,6 +33,17 @@ enum AnthropicMessageContent {
     },
     #[serde(rename = "image")]
     Image { source: AnthropicImageSource },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "tool_result")]
+    ToolReturn {
+        tool_use_id: String,
+        content: String,
+    },
 }
 
 impl AnthropicMessageContent {
@@ -60,6 +72,21 @@ impl AnthropicMessageContent {
                 media_type: llm_image.media().to_owned(),
                 data: llm_image.data().to_owned(),
             },
+        }
+    }
+
+    pub fn tool_use(llm_tool_use: &LLMClientToolUse) -> Self {
+        Self::ToolUse {
+            id: llm_tool_use.id().to_owned(),
+            name: llm_tool_use.name().to_owned(),
+            input: llm_tool_use.input().clone(),
+        }
+    }
+
+    pub fn tool_return(llm_tool_return: &LLMClientToolReturn) -> Self {
+        Self::ToolReturn {
+            tool_use_id: llm_tool_return.tool_use_id().to_owned(),
+            content: llm_tool_return.content().to_owned(),
         }
     }
 }
@@ -143,7 +170,7 @@ struct MessageData {
 #[serde(tag = "type")]
 enum ContentBlockStart {
     #[serde(rename = "tool_use")]
-    InputToolUse { name: String },
+    InputToolUse { name: String, id: String },
     #[serde(rename = "text")]
     TextDelta { text: String },
 }
@@ -207,17 +234,18 @@ impl AnthropicRequest {
             }
         };
         let messages = completion_request.messages();
-        // grab the tools over here
+        // grab the tools over here ONLY from the system message
         let tools = messages
             .iter()
+            .find(|message| message.is_system_message())
             .map(|message| {
                 message
                     .tools()
                     .into_iter()
                     .filter_map(|tool| Some(tool.clone()))
+                    .collect::<Vec<_>>()
             })
-            .flatten()
-            .collect::<Vec<_>>();
+            .unwrap_or_default();
         // First we try to find the system message
         let system_message = messages
             .iter()
@@ -252,10 +280,27 @@ impl AnthropicRequest {
                     .into_iter()
                     .map(|image| AnthropicMessageContent::image(image))
                     .collect::<Vec<_>>();
-                let final_content = vec![anthropic_message_content]
+                let tools = message
+                    .tool_use_value()
                     .into_iter()
-                    .chain(images)
-                    .collect();
+                    .map(|tool_use| AnthropicMessageContent::tool_use(tool_use))
+                    .collect::<Vec<_>>();
+                let tool_return = message
+                    .tool_return_value()
+                    .into_iter()
+                    .map(|tool_return| AnthropicMessageContent::tool_return(tool_return))
+                    .collect::<Vec<_>>();
+                // if we have a tool return then we should not add the content string at all
+                let final_content = if tool_return.is_empty() {
+                    vec![anthropic_message_content]
+                } else {
+                    vec![]
+                }
+                .into_iter()
+                .chain(images)
+                .chain(tools)
+                .chain(tool_return)
+                .collect();
                 AnthropicMessage {
                     role: message.role().to_string(),
                     content: final_content,
@@ -349,9 +394,9 @@ impl AnthropicClient {
         api_key: LLMProviderAPIKeys,
         request: LLMClientCompletionRequest,
         sender: UnboundedSender<LLMClientCompletionResponse>,
-        // The first parameter in the Vec<(String, String)> is the tool_type and the
-        // second one is the value of the tool use after we pare it out
-    ) -> Result<(String, Vec<(String, String)>), LLMClientError> {
+        // The first parameter in the Vec<(String, (String, String))> is the tool_type and the
+        // second one is (tool_id + serialized_json value of the tool use)
+    ) -> Result<(String, Vec<(String, (String, String))>), LLMClientError> {
         let endpoint = self.chat_endpoint();
         let model_str = self.get_model_string(request.model())?;
         let message_tokens = request
@@ -400,12 +445,14 @@ impl AnthropicClient {
 
         let mut buffered_string = "".to_owned();
         // controls which tool we will be using if any
-        let mut tool_use_indication: Vec<(String, String)> = vec![];
+        let mut tool_use_indication: Vec<(String, (String, String))> = vec![];
 
         // handle all the tool parameters that are coming
         // we will keep a global tracker over here
         let mut current_tool_use = None;
         let current_tool_use_ref = &mut current_tool_use;
+        let mut current_tool_use_id = None;
+        let current_tool_use_id_ref = &mut current_tool_use_id;
         let mut running_tool_input = "".to_owned();
         let running_tool_input_ref = &mut running_tool_input;
 
@@ -416,8 +463,9 @@ impl AnthropicClient {
             match event {
                 Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
                     match content_block {
-                        ContentBlockStart::InputToolUse { name } => {
+                        ContentBlockStart::InputToolUse { name, id } => {
                             *current_tool_use_ref = Some(name.to_owned());
+                            *current_tool_use_id_ref = Some(id.to_owned());
                             println!("anthropic::tool_use::{}", &name);
                         }
                         ContentBlockStart::TextDelta { text } => {
@@ -458,16 +506,23 @@ impl AnthropicClient {
                 Ok(AnthropicEvent::ContentBlockStop { _index }) => {
                     // if the code block has stopped we need to pack our bags and
                     // create an entry for the tool which we want to use
-                    if let Some(current_tool_use) = current_tool_use_ref {
+                    if let (Some(current_tool_use), Some(current_tool_use_id)) = (
+                        current_tool_use_ref.clone(),
+                        current_tool_use_id_ref.clone(),
+                    ) {
                         tool_use_indication.push((
                             current_tool_use.to_owned(),
-                            running_tool_input_ref.to_owned(),
+                            (
+                                current_tool_use_id.to_owned(),
+                                running_tool_input_ref.to_owned(),
+                            ),
                         ));
                     }
 
                     // now empty the tool use tracker
                     *current_tool_use_ref = None;
                     *running_tool_input_ref = "".to_owned();
+                    *current_tool_use_id_ref = None;
                 }
                 Ok(AnthropicEvent::MessageStart { message }) => {
                     println!(
@@ -564,7 +619,7 @@ impl LLMClient for AnthropicClient {
             match event {
                 Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
                     match content_block {
-                        ContentBlockStart::InputToolUse { name } => {
+                        ContentBlockStart::InputToolUse { name, id: _id } => {
                             println!("anthropic::tool_use::{}", &name);
                         }
                         ContentBlockStart::TextDelta { text } => {
@@ -656,7 +711,7 @@ impl LLMClient for AnthropicClient {
             match event {
                 Ok(AnthropicEvent::ContentBlockStart { content_block, .. }) => {
                     match content_block {
-                        ContentBlockStart::InputToolUse { name } => {
+                        ContentBlockStart::InputToolUse { name, id: _id } => {
                             println!("anthropic::tool_use::{}", &name);
                         }
                         ContentBlockStart::TextDelta { text } => {

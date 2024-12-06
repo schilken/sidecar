@@ -57,7 +57,7 @@ struct CliArgs {
     log_directory: String,
 
     /// Use json mode strictly
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "true")]
     json_mode: bool,
 }
 

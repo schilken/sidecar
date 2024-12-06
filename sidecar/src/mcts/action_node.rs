@@ -96,9 +96,32 @@ impl ActionObservation {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActionToolInputPartial {
+    tool_use_id: String,
+    tool_input_partial: ToolInputPartial,
+}
+
+impl ActionToolInputPartial {
+    pub fn new(tool_use_id: String, tool_input_partial: ToolInputPartial) -> Self {
+        Self {
+            tool_use_id,
+            tool_input_partial,
+        }
+    }
+
+    pub fn tool_use_id(&self) -> &str {
+        &self.tool_use_id
+    }
+
+    pub fn tool_input_partial(&self) -> &ToolInputPartial {
+        &self.tool_input_partial
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ActionToolParameters {
     Errored(String),
-    Tool(ToolInputPartial),
+    Tool(ActionToolInputPartial),
 }
 
 impl ActionToolParameters {
@@ -106,8 +129,8 @@ impl ActionToolParameters {
         Self::Errored(error_str)
     }
 
-    pub fn tool(tool_input: ToolInputPartial) -> Self {
-        Self::Tool(tool_input)
+    pub fn tool(tool_use_id: String, tool_input: ToolInputPartial) -> Self {
+        Self::Tool(ActionToolInputPartial::new(tool_use_id, tool_input))
     }
 
     pub fn to_string(&self) -> String {
@@ -115,14 +138,16 @@ impl ActionToolParameters {
             Self::Errored(error_string) => {
                 format!("Failed to generate action. Error: {error_string}")
             }
-            Self::Tool(tool_input_partial) => tool_input_partial.to_string(),
+            Self::Tool(tool_input_partial) => tool_input_partial.tool_input_partial.to_string(),
         }
     }
 
     pub fn to_tool_type(&self) -> Option<ToolType> {
         match self {
             Self::Errored(_) => None,
-            Self::Tool(tool_input_partial) => Some(tool_input_partial.to_tool_type()),
+            Self::Tool(tool_input_partial) => {
+                Some(tool_input_partial.tool_input_partial.to_tool_type())
+            }
         }
     }
 }
@@ -1131,15 +1156,21 @@ impl SearchTree {
                         ActionToolParameters::Tool(first_tool_input_parameters),
                         &ActionToolParameters::Tool(ref second_tool_input_parameters),
                     ) => {
-                        let first_tool_type = first_tool_input_parameters.to_tool_type();
-                        let second_tool_type = second_tool_input_parameters.to_tool_type();
+                        let first_tool_type = first_tool_input_parameters
+                            .tool_input_partial()
+                            .to_tool_type();
+                        let second_tool_type = second_tool_input_parameters
+                            .tool_input_partial()
+                            .to_tool_type();
                         if first_tool_type != second_tool_type {
                             false
                         } else {
                             // now we can compare the tool input parameters
                             // since they do not have the thinking over here
-                            first_tool_input_parameters.to_string()
-                                == second_tool_input_parameters.to_string()
+                            first_tool_input_parameters.tool_input_partial().to_string()
+                                == second_tool_input_parameters
+                                    .tool_input_partial()
+                                    .to_string()
                         }
                     }
                     _ => false,
@@ -1489,7 +1520,7 @@ impl SearchTree {
             match action {
                 ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
                 ActionToolParameters::Tool(tool) => {
-                    state_params.push(format!("{}", tool.to_tool_type()))
+                    state_params.push(format!("{}", tool.tool_input_partial().to_tool_type()))
                 }
             }
 

@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, path::Path, sync::Arc};
 
-use llm_client::clients::types::LLMClientMessage;
+use llm_client::clients::types::{LLMClientMessage, LLMClientToolReturn, LLMClientToolUse};
 
 use crate::{
     agentic::{
@@ -29,7 +29,10 @@ use crate::{
         },
     },
     chunking::text_document::{Position, Range},
-    mcts::action_node::{ActionNode, ActionObservation, ActionToolParameters, SearchTree},
+    mcts::{
+        action_node::{ActionNode, ActionObservation, ActionToolParameters, SearchTree},
+        editor::anthropic_computer::AnthropicCodeEditor,
+    },
 };
 
 use super::error::InferenceError;
@@ -127,15 +130,65 @@ impl InferenceEngine {
                 message_history.push(LLMClientMessage::user(message));
             }
 
-            if let Some(action) = current_node.action() {
-                message_history.push(LLMClientMessage::assistant(action.to_string()))
-            }
-
-            if let Some(observation) = current_node.observation() {
-                // always give the full observation message and not just the summary
-                // since we will be generating new actions and they might be based
-                // on the read_file output or the code_edit output
-                message_history.push(LLMClientMessage::user(observation.message().to_owned()));
+            // always give the full observation message and not just the summary
+            // since we will be generating new actions and they might be based
+            // on the read_file output or the code_edit output
+            if let (Some(action), Some(observation)) =
+                (current_node.action(), current_node.observation())
+            {
+                if self.is_json_mode {
+                    match action {
+                        ActionToolParameters::Errored(errored_string) => {
+                            message_history.push(LLMClientMessage::assistant(errored_string));
+                            // add the observation over here as well
+                            message_history
+                                .push(LLMClientMessage::user(observation.message().to_owned()));
+                        }
+                        ActionToolParameters::Tool(tool_parameters) => {
+                            let tool_schema = tool_parameters.tool_input_partial().to_json_value();
+                            match tool_schema {
+                                Some(value) => {
+                                    // add the observation over here as well
+                                    message_history.push(
+                                        LLMClientMessage::assistant(
+                                            "<thinking>\n...\n</thinking>".to_owned(),
+                                        )
+                                        .insert_tool_use(
+                                            LLMClientToolUse::new(
+                                                tool_parameters
+                                                    .tool_input_partial()
+                                                    .to_tool_type()
+                                                    .to_string(),
+                                                tool_parameters.tool_use_id().to_owned(),
+                                                value,
+                                            ),
+                                        ),
+                                    );
+                                    message_history.push(
+                                        LLMClientMessage::user("".to_owned())
+                                            .insert_tool_return_values(vec![
+                                                LLMClientToolReturn::new(
+                                                    tool_parameters.tool_use_id().to_owned(),
+                                                    observation.message().to_owned(),
+                                                ),
+                                            ]),
+                                    );
+                                }
+                                None => {
+                                    message_history.push(LLMClientMessage::assistant(
+                                        tool_parameters.tool_input_partial().to_string(),
+                                    ));
+                                    message_history.push(LLMClientMessage::user(
+                                        observation.message().to_owned(),
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    message_history.push(LLMClientMessage::assistant(action.to_string()));
+                    message_history.push(LLMClientMessage::user(observation.message().to_owned()));
+                }
             }
         }
 
@@ -186,18 +239,19 @@ impl InferenceEngine {
             false,
         );
 
-        let mut session_messages = messages
+        let session_messages = messages
             .into_iter()
             .map(|message| SessionChatMessage::from_llm_message(message))
             .collect::<Vec<_>>();
 
         // add a reminder for the output format so it never forgets the thinking tag
-        session_messages.push(SessionChatMessage::user(
-            r#" Output format reminder:
-Always include the <thinking></thinking> section before using the tool."#
-                .to_owned(),
-            vec![],
-        ));
+        // we can't add that when we are in the tool mode
+        //         session_messages.push(SessionChatMessage::user(
+        //             r#" Output format reminder:
+        // Always include the <thinking></thinking> section before using the tool."#
+        //                 .to_owned(),
+        //             vec![],
+        //         ));
 
         let tool_agent_input = ToolUseAgentInputOnlyTools::new(
             session_messages,
@@ -233,8 +287,9 @@ Always include the <thinking></thinking> section before using the tool."#
                             false,
                         ));
                     }
-                    let tool_input_partial = tool_input_partial[0].clone();
-                    let tool_parameters = ActionToolParameters::tool(tool_input_partial.clone());
+                    let (tool_use_id, tool_input_partial) = tool_input_partial[0].clone();
+                    let tool_parameters =
+                        ActionToolParameters::tool(tool_use_id, tool_input_partial.clone());
                     // we should also detect duplicates over here before we start executing
                     // before executing the tool, check if the tool parameters are equal
                     // we can start with doing something very simple before we do a hard thing
@@ -344,7 +399,10 @@ Always include the <thinking></thinking> section before using the tool."#
                 // we are going to execute this branch of the code so we can get the output
                 // over here
                 ToolUseAgentOutput::Success((tool_input_partial, _)) => {
-                    let tool_parameters = ActionToolParameters::tool(tool_input_partial.clone());
+                    let tool_parameters = ActionToolParameters::tool(
+                        "tool_use".to_owned(),
+                        tool_input_partial.clone(),
+                    );
                     // we should also detect duplicates over here before we start executing
                     // before executing the tool, check if the tool parameters are equal
                     // we can start with doing something very simple before we do a hard thing
@@ -796,8 +854,13 @@ Output:
                 );
                 Ok(ActionObservation::new(message.to_owned(), message, false))
             }
-            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {
-                todo!("This is to be done, will get to it quickly")
+            ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {
+                let editor = AnthropicCodeEditor::new();
+                let observation = editor.run_command(code_editor_parameters).await;
+                match observation {
+                    Ok(observation_ok) => Ok(observation_ok),
+                    Err(e) => Ok(ActionObservation::errored(e.to_string(), true, false)),
+                }
             }
         }
     }

@@ -228,8 +228,8 @@ Do not use this tool to confirm the existence of files you may have created, as 
                         "description": "(required) Whether to list files recursively. Use true for recursive listing, false for top-level only.",
                     }
                 },
+                "required": ["directory_path", "recursive"],
             },
-            "required": ["directory_path", "recursive"]
         })
     }
 }

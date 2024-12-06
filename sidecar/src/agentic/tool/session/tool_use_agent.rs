@@ -85,7 +85,10 @@ impl ToolUseAgentInput {
 
 #[derive(Debug)]
 pub enum ToolUseAgentOutputWithTools {
-    Success((Vec<ToolInputPartial>, String)),
+    /// How to understand this data:
+    /// Vec<(String, ToolInputPartial)> -> Vec<(tool_use_id, tool_input_params)>
+    /// String -> thinking string
+    Success((Vec<(String, ToolInputPartial)>, String)),
     Failure,
 }
 
@@ -682,18 +685,33 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             .into_iter()
             .map(|session_message| {
                 let role = session_message.role();
+                let tool_use = session_message.tool_use();
                 match role {
                     SessionChatRole::User => {
-                        LLMClientMessage::user(session_message.message().to_owned()).with_images(
-                            session_message
-                                .images()
-                                .into_iter()
-                                .map(|session_image| session_image.to_llm_image())
-                                .collect(),
-                        )
+                        LLMClientMessage::user(session_message.message().to_owned())
+                            .with_images(
+                                session_message
+                                    .images()
+                                    .into_iter()
+                                    .map(|session_image| session_image.to_llm_image())
+                                    .collect(),
+                            )
+                            .insert_tool_return_values(
+                                session_message
+                                    .tool_return()
+                                    .into_iter()
+                                    .map(|tool_return| tool_return.to_llm_tool_return())
+                                    .collect(),
+                            )
                     }
                     SessionChatRole::Assistant => {
                         LLMClientMessage::assistant(session_message.message().to_owned())
+                            .insert_tool_use_values(
+                                tool_use
+                                    .into_iter()
+                                    .map(|tool_use| tool_use.to_llm_tool_use())
+                                    .collect(),
+                            )
                     }
                 }
             })
@@ -747,12 +765,16 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         )
         .await;
 
+        println!("tool_use_agent::invoke_json_tool");
         if let Some(Ok(Ok(response))) = response {
+            println!("tool_use_agent::invoke_json_tool::reply({:?})", &response);
             // we will have a string here representing the thinking and another with the various tool inputs and their json representation
             let thinking = response.0;
             let tool_inputs = response.1;
             let mut tool_inputs_parsed = vec![];
             for (tool_type, tool_input) in tool_inputs.into_iter() {
+                let tool_use_id = tool_input.0;
+                let tool_input = tool_input.1;
                 let tool_input = match tool_type.as_ref() {
                     "list_files" => ToolInputPartial::ListFiles(
                         serde_json::from_str::<ListFilesInput>(&tool_input).map_err(|_e| {
@@ -796,7 +818,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                         return Err(SymbolError::WrongToolOutput);
                     }
                 };
-                tool_inputs_parsed.push(tool_input);
+                tool_inputs_parsed.push((tool_use_id, tool_input));
             }
 
             Ok(ToolUseAgentOutputWithTools::Success((

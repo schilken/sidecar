@@ -52,8 +52,8 @@ May not be suitable for other types of binary files, as it returns the raw conte
                         "description": "(required) The relative path of the file to read.",
                     },
                 },
+                "required": ["fs_file_path"],
             },
-            "required": ["fs_file_path"],
         })
     }
 }

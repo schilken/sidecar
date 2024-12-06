@@ -10,4 +10,7 @@ pub enum AnthropicEditorError {
 
     #[error("Error reading file {0}")]
     ReadingFileError(String),
+
+    #[error("View command error: {0}")]
+    ViewCommandError(String),
 }

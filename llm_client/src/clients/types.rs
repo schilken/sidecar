@@ -343,6 +343,54 @@ impl LLMClientMessageTool {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientToolReturn {
+    tool_use_id: String,
+    content: String,
+}
+
+impl LLMClientToolReturn {
+    pub fn new(tool_use_id: String, content: String) -> Self {
+        Self {
+            tool_use_id,
+            content,
+        }
+    }
+
+    pub fn tool_use_id(&self) -> &str {
+        &self.tool_use_id
+    }
+
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientToolUse {
+    name: String,
+    input: serde_json::Value,
+    id: String,
+}
+
+impl LLMClientToolUse {
+    pub fn new(name: String, id: String, input: serde_json::Value) -> Self {
+        Self { name, id, input }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn input(&self) -> &serde_json::Value {
+        &self.input
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct LLMClientMessageImage {
     r#type: String,
     media: String,
@@ -379,6 +427,10 @@ pub struct LLMClientMessage {
     tools: Vec<serde_json::Value>,
     function_call: Option<LLMClientMessageFunctionCall>,
     function_return: Option<LLMClientMessageFunctionReturn>,
+    /// this is going to bite us later on, but until we format the
+    /// tool use properly we can figure this out later on
+    tool_use: Vec<LLMClientToolUse>,
+    tool_return: Vec<LLMClientToolReturn>,
     // if this message marks a caching point in the overall message
     cache_point: bool,
 }
@@ -390,6 +442,8 @@ impl LLMClientMessage {
             message,
             images,
             tools: vec![],
+            tool_use: vec![],
+            tool_return: vec![],
             function_call: None,
             function_return: None,
             cache_point: false,
@@ -416,6 +470,8 @@ impl LLMClientMessage {
                 Some(function_call) => Some(function_call),
                 None => other.function_call,
             },
+            tool_use: vec![],
+            tool_return: vec![],
             function_return: match other.function_return {
                 Some(function_return) => Some(function_return),
                 None => self.function_return,
@@ -430,6 +486,8 @@ impl LLMClientMessage {
             message: "".to_owned(),
             images: vec![],
             tools: vec![],
+            tool_return: vec![],
+            tool_use: vec![],
             function_call: Some(LLMClientMessageFunctionCall { name, arguments }),
             function_return: None,
             cache_point: false,
@@ -442,6 +500,8 @@ impl LLMClientMessage {
             message: "".to_owned(),
             images: vec![],
             tools: vec![],
+            tool_return: vec![],
+            tool_use: vec![],
             function_call: None,
             function_return: Some(LLMClientMessageFunctionReturn { name, content }),
             cache_point: false,
@@ -528,6 +588,29 @@ impl LLMClientMessage {
 
     pub fn insert_tool(mut self, tool: serde_json::Value) -> Self {
         self.tools.push(tool);
+        self
+    }
+
+    pub fn insert_tool_use(mut self, tool_use: LLMClientToolUse) -> Self {
+        self.tool_use.push(tool_use);
+        self
+    }
+
+    pub fn tool_use_value(&self) -> &[LLMClientToolUse] {
+        self.tool_use.as_slice()
+    }
+
+    pub fn insert_tool_use_values(mut self, tool_use_vec: Vec<LLMClientToolUse>) -> Self {
+        self.tool_use.extend(tool_use_vec);
+        self
+    }
+
+    pub fn tool_return_value(&self) -> &[LLMClientToolReturn] {
+        self.tool_return.as_slice()
+    }
+
+    pub fn insert_tool_return_values(mut self, tool_return_vec: Vec<LLMClientToolReturn>) -> Self {
+        self.tool_return.extend(tool_return_vec);
         self
     }
 }

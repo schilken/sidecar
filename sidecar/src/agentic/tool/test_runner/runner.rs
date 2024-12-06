@@ -51,9 +51,9 @@ You should verify where the test files are located, only use test_runner tool af
                         },
                         "description": "(required) A list of file paths to run tests for, separated by newlines",
                     },
-                }
+                },
+                "required": ["fs_file_paths"],
             },
-            "required": ["fs_file_paths"],
         })
     }
 }

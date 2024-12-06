@@ -551,7 +551,15 @@ impl ToolBroker {
         tool_type: ToolType,
         trajectory_length: usize,
     ) -> Vec<ToolRewardScale> {
-        let tool_in_map = self.tools.get(&tool_type);
+        // causally change the code editor tool to be the code-editing
+        // tool, they both are equivalent nad yes I know how disgusting this
+        // feels, trust me
+        let updated_tool_type = if tool_type == ToolType::CodeEditorTool {
+            ToolType::CodeEditing
+        } else {
+            tool_type
+        };
+        let tool_in_map = self.tools.get(&updated_tool_type);
         match tool_in_map {
             Some(tool) => tool.get_reward_scale(trajectory_length),
             None => {

@@ -3,9 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
-pub enum Command {
+pub enum EditorCommand {
     View,
     Create,
     StrReplace,
@@ -13,7 +13,7 @@ pub enum Command {
     UndoEdit,
 }
 
-impl std::fmt::Display for Command {
+impl std::fmt::Display for EditorCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::View => write!(f, "view"),
@@ -28,7 +28,7 @@ impl std::fmt::Display for Command {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub struct CodeEditorParameters {
-    pub command: Command,
+    pub command: EditorCommand,
     pub path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_text: Option<String>,

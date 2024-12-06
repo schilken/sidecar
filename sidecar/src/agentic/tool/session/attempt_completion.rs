@@ -59,9 +59,9 @@ impl AttemptCompletionClientRequest {
                         "type": "string",
                         "description": "(required) The result of the task. Formulate this result in a way that is final and does not require further input from the user. Don't end your result with questions or offers for further assistance.",
                     }
-                }
+                },
+                "required": ["result"],
             },
-            "required": ["result"],
         })
     }
 }

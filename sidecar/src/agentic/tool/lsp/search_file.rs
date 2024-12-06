@@ -202,8 +202,8 @@ impl SearchFileContentInputPartial {
                         "description": "(optional) Glob pattern to filter files (e.g., '*.ts' for TypeScript files). If not provided, it will search all files (*).",
                     },
                 },
+                "required": ["directory_path", "regex_pattern", "file_pattern"],
             },
-            "required": ["directory_path", "regex_pattern", "file_pattern"],
         })
     }
 }

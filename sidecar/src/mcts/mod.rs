@@ -2,6 +2,7 @@
 
 pub mod action_node;
 pub(crate) mod decider;
+pub(crate) mod editor;
 pub(crate) mod execution;
 pub(crate) mod feedback;
 pub mod selector;

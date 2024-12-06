@@ -277,6 +277,8 @@ impl Tool for SearchFileContentClient {
             file_pattern,
             "--context",
             "1",
+            // add multiline support for regex
+            "--multiline",
             &context.directory_path,
         ];
 

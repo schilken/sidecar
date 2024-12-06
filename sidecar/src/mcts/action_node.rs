@@ -9,7 +9,7 @@ use llm_client::broker::LLMBroker;
 use crate::{
     agentic::{
         symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
-        tool::{input::ToolInputPartial, r#type::ToolType},
+        tool::{code_edit::code_editor::EditorCommand, input::ToolInputPartial, r#type::ToolType},
     },
     mcts::decider::decider::Decider,
     user_context::types::UserContext,
@@ -1525,7 +1525,23 @@ impl SearchTree {
             match action {
                 ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
                 ActionToolParameters::Tool(tool) => {
-                    state_params.push(format!("{}", tool.tool_input_partial().to_tool_type()))
+                    let tool_str = match tool.tool_input_partial() {
+                        ToolInputPartial::CodeEditorParameters(parameters) => {
+                            match &parameters.command {
+                                EditorCommand::Create => "str_replace_editor::create".to_owned(),
+                                EditorCommand::Insert => "str_replace_editor::insert".to_owned(),
+                                EditorCommand::StrReplace => {
+                                    "str_replace_editor::str_replace".to_owned()
+                                }
+                                EditorCommand::UndoEdit => {
+                                    "str_replace_editor::undo_edit".to_owned()
+                                }
+                                EditorCommand::View => "str_replace_editor::view".to_owned(),
+                            }
+                        }
+                        _ => tool.tool_input_partial().to_tool_type().to_string(),
+                    };
+                    state_params.push(tool_str);
                 }
             }
 

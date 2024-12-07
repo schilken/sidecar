@@ -236,7 +236,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         expansions,                                  // max_expansions
         100,                                         // max_depth of the tree
         1000,                                        // max_iterations
-        Some(5),                                     // max_finished_nodes
+        Some(10),                                    // max_finished_nodes
         None,                                        // reward_threshold
         Some(2),                                     // min_finished_nodes
         args.single_traj_search,                     // max_search_try

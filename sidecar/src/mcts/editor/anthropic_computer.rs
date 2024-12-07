@@ -217,6 +217,7 @@ impl AnthropicCodeEditor {
         new_str: Option<&str>,
     ) -> Result<ActionObservation, AnthropicEditorError> {
         let file_content = self.read_file(path).await?;
+        dbg!(&file_content);
         let occurrences = file_content.matches(old_str).count();
 
         if occurrences == 0 {

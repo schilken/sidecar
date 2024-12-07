@@ -1552,7 +1552,7 @@ impl SearchTree {
                             // Unique colors for each EditorCommand
                             match &parameters.command {
                                 EditorCommand::Create => {
-                                    "str_replace_editor::create".purple().to_string()
+                                    "str_replace_editor::create".blue().to_string()
                                 }
                                 EditorCommand::Insert => {
                                     "str_replace_editor::insert".yellow().to_string()
@@ -1564,7 +1564,7 @@ impl SearchTree {
                                     "str_replace_editor::undo_edit".white().to_string()
                                 }
                                 EditorCommand::View => {
-                                    "str_replace_editor::view".magenta().to_string()
+                                    "str_replace_editor::view".purple().to_string()
                                 }
                             }
                         }
@@ -1575,7 +1575,7 @@ impl SearchTree {
                             tool_type.to_string().bright_yellow().to_string()
                         }
                         ToolInputPartial::SearchFileContentWithRegex(_) => {
-                            tool_type.to_string().bright_blue().to_string()
+                            tool_type.to_string().bright_purple().to_string()
                         }
                         ToolInputPartial::OpenFile(_) => {
                             tool_type.to_string().bright_magenta().to_string()

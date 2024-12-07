@@ -500,7 +500,7 @@ impl AnthropicClient {
                     }
                     ContentBlockDeltaType::InputJsonDelta { partial_json } => {
                         *running_tool_input_ref = running_tool_input_ref.to_owned() + &partial_json;
-                        println!("input_json_delta::{}", &partial_json);
+                        // println!("input_json_delta::{}", &partial_json);
                     }
                 },
                 Ok(AnthropicEvent::ContentBlockStop { _index }) => {
@@ -538,6 +538,10 @@ impl AnthropicClient {
                     // dbg!(&event);
                 }
             }
+        }
+
+        if tool_use_indication.is_empty() {
+            println!("anthropic::tool_not_found");
         }
 
         Ok((buffered_string, tool_use_indication))

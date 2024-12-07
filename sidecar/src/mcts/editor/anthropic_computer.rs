@@ -247,7 +247,7 @@ impl AnthropicCodeEditor {
         let new_file_content = file_content.replace(old_str, replacement);
         self.write_file(path, &new_file_content).await?;
 
-        let snippet = self.extract_snippet(&new_file_content, old_str, replacement);
+        let snippet = self.extract_snippet(&new_file_content, replacement);
         let mut msg = format!("The file {:?} has been edited. ", path);
         msg.push_str(&self.make_output(&snippet, &format!("a snippet of {:?}", path), 1));
         msg.push_str("Review the changes if necessary.");
@@ -345,21 +345,25 @@ impl AnthropicCodeEditor {
         )
     }
 
-    fn extract_snippet(&self, file_content: &str, old_str: &str, new_str: &str) -> String {
-        // Find where old_str was replaced. Since we ensured uniqueness,
-        // we can find index by splitting.
-        let before_len = file_content.split(old_str).next().unwrap_or("").len();
-        // This isn't a perfect method, but let's assume old_str was at `before_len`.
-        // Let's approximate the line number: count how many newlines are before that position.
-        let prefix = &file_content[..before_len];
-        let replacement_line = prefix.lines().count().saturating_sub(1);
+    fn extract_snippet(&self, new_file_content: &str, new_str: &str) -> String {
+        // Find the position of new_str in new_file_content
+        let pos = match new_file_content.find(new_str) {
+            Some(p) => p,
+            None => {
+                // new_str not found, return something indicative or handle error
+                return String::from("new_str not found in new_file_content");
+            }
+        };
 
-        // Extract snippet around that line
-        let lines: Vec<&str> = file_content.lines().collect();
-        let snippet_lines = 4;
-        let start_line = replacement_line.saturating_sub(snippet_lines);
-        let end_line =
-            (replacement_line + snippet_lines + new_str.lines().count()).min(lines.len());
+        // Determine which line new_str was on
+        let prefix = &new_file_content[..pos];
+        let snippet_line = prefix.lines().count();
+
+        // Extract a snippet around that line
+        let lines: Vec<&str> = new_file_content.lines().collect();
+        let snippet_lines = 4; // number of lines to show around the match
+        let start_line = snippet_line.saturating_sub(snippet_lines);
+        let end_line = (snippet_line + snippet_lines + new_str.lines().count()).min(lines.len());
 
         lines[start_line..end_line].join("\n")
     }

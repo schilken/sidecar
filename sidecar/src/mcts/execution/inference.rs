@@ -31,6 +31,7 @@ use crate::{
     chunking::text_document::{Position, Range},
     mcts::{
         action_node::{ActionNode, ActionObservation, ActionToolParameters, SearchTree},
+        agent_settings::settings::AgentSettings,
         editor::anthropic_computer::AnthropicCodeEditor,
     },
 };
@@ -70,16 +71,12 @@ impl InferenceEngineResult {
 }
 
 pub struct InferenceEngine {
-    is_json_mode: bool,
-    is_midwit_mode: bool,
+    agent_settings: AgentSettings,
 }
 
 impl InferenceEngine {
-    pub fn new(is_json_mode: bool, is_midwit_mode: bool) -> Self {
-        Self {
-            is_json_mode,
-            is_midwit_mode,
-        }
+    pub fn new(agent_settings: AgentSettings) -> Self {
+        Self { agent_settings }
     }
 
     pub async fn execute(
@@ -143,7 +140,7 @@ impl InferenceEngine {
             if let (Some(action), Some(observation)) =
                 (current_node.action(), current_node.observation())
             {
-                if self.is_json_mode {
+                if self.agent_settings.is_json() {
                     match action {
                         ActionToolParameters::Errored(errored_string) => {
                             message_history.push(LLMClientMessage::assistant(errored_string));
@@ -207,7 +204,7 @@ impl InferenceEngine {
         }
 
         // Now that we have the messages setup we ask the agent to generate the final tool which we want to use
-        let execution_and_observe = if self.is_json_mode {
+        let execution_and_observe = if self.agent_settings.is_json() {
             self.generate_observation_for_node_json_mode(
                 leaf,
                 search_tree,
@@ -270,7 +267,7 @@ impl InferenceEngine {
                 .filter_map(|tool_type| tool_box.tools().get_tool_json(&tool_type))
                 .collect(),
             problem_statement,
-            self.is_midwit_mode,
+            self.agent_settings.is_midwit(),
             message_properties.clone(),
         );
 

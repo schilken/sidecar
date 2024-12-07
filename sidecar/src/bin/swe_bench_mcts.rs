@@ -21,7 +21,10 @@ use sidecar::{
     },
     chunking::{editor_parsing::EditorParsing, languages::TSLanguageParsing},
     inline_completion::symbols_tracker::SymbolTrackerInline,
-    mcts::{action_node::SearchTree, selector::selector::Selector},
+    mcts::{
+        action_node::SearchTree, agent_settings::settings::AgentSettings,
+        selector::selector::Selector,
+    },
 };
 use std::{path::PathBuf, sync::Arc};
 
@@ -164,6 +167,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_configuration,
     );
 
+    let agent_settings = AgentSettings::new(args.json_mode, args.midwit_mode);
+
+    // The bad actions which hurt the check_for_bad_children_actions
+    let bad_actions = if agent_settings.is_midwit() {
+        vec![ToolType::CodeEditorTool]
+    } else {
+        vec![ToolType::CodeEditing]
+    };
+
     let mut tools = vec![
         ToolType::ListFiles,
         ToolType::SearchFileContentWithRegex,
@@ -187,23 +199,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let selector = Selector::new(
-        1.0,                         // exploitation_weight
-        false,                       // use_average_reward
-        1.0,                         // exploration_weight
-        0.8,                         // depth_weight
-        0.0,                         // depth_bonus_factor
-        50.0,                        // high_value_threshold
-        0.0,                         // low_value_threshold
-        75.0,                        // very_high_value_threshold
-        50.0,                        // high_value_leaf_bonus_constant
-        20.0,                        // high_value_bad_children_bonus_constant
-        5.0,                         // high_value_child_penalty_constant
-        50.0,                        // finished_trajectory_penalty
-        50.0,                        // expect_correction_bonus
-        vec![ToolType::CodeEditing], // check_for_bad_child_actions
-        100.0,                       // diversity_weight
-        25.0,                        // duplicate_child_penalty_constant
-        50.0,                        // duplicate_action_penalty_constant
+        1.0,         // exploitation_weight
+        false,       // use_average_reward
+        1.0,         // exploration_weight
+        0.8,         // depth_weight
+        0.0,         // depth_bonus_factor
+        50.0,        // high_value_threshold
+        0.0,         // low_value_threshold
+        75.0,        // very_high_value_threshold
+        50.0,        // high_value_leaf_bonus_constant
+        20.0,        // high_value_bad_children_bonus_constant
+        5.0,         // high_value_child_penalty_constant
+        50.0,        // finished_trajectory_penalty
+        50.0,        // expect_correction_bonus
+        bad_actions, // check_for_bad_child_actions
+        100.0,       // diversity_weight
+        25.0,        // duplicate_child_penalty_constant
+        50.0,        // duplicate_action_penalty_constant
     );
 
     // Instantiate the mcts tree over here and start the search
@@ -222,8 +234,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tool_box,                               // tool_box
         llm_broker,                             // llm_client
         log_directory,                          // log directory
-        args.json_mode,                         // json mode
-        args.midwit_mode,                       // midwit mode
+        agent_settings,                         // agent_settings
     );
 
     // Run the search

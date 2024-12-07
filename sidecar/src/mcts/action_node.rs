@@ -1250,6 +1250,7 @@ impl SearchTree {
     pub async fn run_node(
         &mut self,
         node_index: usize,
+        is_duplicate_allowed: bool,
         message_properties: SymbolEventMessageProperties,
     ) {
         println!("Simulating node {}", node_index);
@@ -1277,6 +1278,7 @@ impl SearchTree {
             .execute(
                 nodes_trajectory,
                 &self,
+                is_duplicate_allowed,
                 self.tool_box.clone(),
                 message_properties.clone(),
             )
@@ -1533,7 +1535,9 @@ impl SearchTree {
                         .await;
 
                     // Simulation
-                    self.run_node(new_index, message_properties.clone()).await;
+                    let is_duplicate_allowed = iteration == 1; // only allowed duplicates for the start of the traj
+                    self.run_node(new_index, is_duplicate_allowed, message_properties.clone())
+                        .await;
                     self.log_tree_state(new_index, "After simulation:");
 
                     // Backpropagation

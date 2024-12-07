@@ -83,6 +83,7 @@ impl InferenceEngine {
         &self,
         mut nodes_trajectory: Vec<&ActionNode>,
         search_tree: &SearchTree,
+        is_duplicate_allowed: bool,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<InferenceEngineResult, InferenceError> {
@@ -208,6 +209,7 @@ impl InferenceEngine {
             self.generate_observation_for_node_json_mode(
                 leaf,
                 search_tree,
+                is_duplicate_allowed,
                 message_history,
                 problem_statment.expect("to be alway present in the tree"),
                 tool_box,
@@ -231,6 +233,7 @@ impl InferenceEngine {
         &self,
         current_node: &ActionNode,
         search_tree: &SearchTree,
+        is_duplicate_allowed: bool,
         messages: Vec<LLMClientMessage>,
         problem_statement: String,
         tool_box: Arc<ToolBox>,
@@ -302,7 +305,8 @@ impl InferenceEngine {
                     // before executing the tool, check if the tool parameters are equal
                     // we can start with doing something very simple before we do a hard thing
                     let is_duplicate = search_tree.is_duplicate(current_node, &tool_parameters);
-                    if is_duplicate {
+                    // if duplicates are not allowed stop hard since we can't make progress
+                    if !is_duplicate_allowed && is_duplicate {
                         Ok(InferenceEngineResult::new(None, tool_parameters, true))
                     } else {
                         let node_execution_output = self

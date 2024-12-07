@@ -66,6 +66,10 @@ struct CliArgs {
     /// Use midwit mode (aka sonnet3.5 with tool)
     #[arg(long, default_value = "true")]
     midwit_mode: bool,
+
+    /// Run in single trajectory but a lot of them
+    #[arg(long, default_value = None)]
+    single_traj_search: Option<usize>,
 }
 
 /// Define the SWEbenchInstance struct for serialization
@@ -219,14 +223,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         50.0,        // duplicate_action_penalty_constant
     );
 
+    // how many children the node can have?
+    let expansions = if args.single_traj_search.is_some() {
+        // if we are doing single traj then only allow for a single node expansion
+        1
+    } else {
+        3
+    };
+
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
-        3,                                      // max_expansions
+        expansions,                             // max_expansions
         40,                                     // max_depth of the tree
-        300,                                    // max_iterations
-        Some(3),                                // max_finished_nodes
+        400,                                    // max_iterations
+        Some(5),                                // max_finished_nodes
         None,                                   // reward_threshold
         Some(2),                                // min_finished_nodes
+        args.single_traj_search,                // max_search_try
         input_parts.git_drname.to_owned(),      // root_directory
         repo_name,                              // repo_name
         input_parts.instance.problem_statement, // problem_statment

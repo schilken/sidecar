@@ -322,6 +322,8 @@ pub struct SearchTree {
     reward_threshold: Option<f32>,
     /// The minimum number of finished nodes to consider before finishing
     min_finished_nodes: Option<usize>,
+    /// Maximum number of times to try out the search
+    max_search_try: Option<usize>,
 
     selector: Selector,
     #[serde(skip)]
@@ -349,6 +351,7 @@ impl SearchTree {
         max_finished_nodes: Option<usize>,
         reward_threshold: Option<f32>,
         min_finished_nodes: Option<usize>,
+        max_search_try: Option<usize>,
         root_directory: String,
         repo_name: String,
         problem_statement: String,
@@ -367,6 +370,7 @@ impl SearchTree {
             max_expansions,
             root_node_index: 0,
             max_depth,
+            max_search_try,
             max_iterations,
             max_finished_nodes,
             reward_threshold,
@@ -1431,65 +1435,104 @@ impl SearchTree {
         println!("\n=== Starting MCTS Search ===");
         let mut iteration = 0;
 
-        loop {
-            iteration += 1;
-            println!("\n--- Iteration {} ---", iteration);
-
-            // Add tree visualization after each iteration
-            self.print_tree();
-
-            // change as necessary
-            self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
-                .await;
-
-            if self.is_finished() {
-                println!("Search finished - termination condition met");
-                break;
-            }
-
-            // Selection phase
-            let selected_node = self.select();
-            if let Some(selected_index) = selected_node {
-                self.log_tree_state(selected_index, "Selected:");
-            } else {
-                println!("No node selected - terminating search");
-                break;
-            }
-
-            // Expansion phase
-            let new_node = selected_node.and_then(|n| self.expand(n));
-            if let Some(new_index) = new_node {
-                self.log_tree_state(new_index, "Expanded:");
-            } else {
-                println!("No expansion possible - terminating search");
-                break;
-            }
-
-            let new_index = new_node.expect("Already checked above");
-
-            // Reset and prepare node
-            self.reset_file_system(new_index).await;
-
-            self.generate_feedback_for_node(new_index, message_properties.clone())
-                .await;
-
-            // Simulation
-            self.run_node(new_index, message_properties.clone()).await;
-            self.log_tree_state(new_index, "After simulation:");
-
-            // Backpropagation
-            self.backpropogate(new_index);
-
-            // change as necessary is saved over here
-            self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
-                .await;
-
-            // Log tree statistics
+        // This is the main search loop here depending on how many times we want to try
+        // out the search we can put this in a proper loop over and keep running based on top
+        // of that
+        let max_search_loops = if let Some(max_search_tries) = self.max_search_try {
             println!(
-                "Tree state: {} total nodes, {} expandable",
-                self.index_to_node.len(),
-                self.expandable_node(self.root_node_index).len()
+                "==== DETECTED SINGLE CHILD MODE, TRAJECTORIES TO GENERATE: {} ====",
+                max_search_tries
             );
+            max_search_tries
+        } else {
+            1
+        };
+        // we use this to pivot back to the root node and start again
+        // this allows us to run multiple trajectories at the same time
+        // and literally expand on the search space
+        let mut traj_counter = 0;
+        loop {
+            if traj_counter < max_search_loops {
+                traj_counter = traj_counter + 1;
+                loop {
+                    iteration += 1;
+                    println!("\n--- Traj: {}, Iteration {} ---", traj_counter, iteration);
+
+                    // Add tree visualization after each iteration
+                    self.print_tree();
+
+                    // change as necessary
+                    self.save_serialised_graph(
+                        &self.log_directory,
+                        &message_properties.root_request_id(),
+                    )
+                    .await;
+
+                    if self.is_finished() {
+                        println!("Search finished - termination condition met");
+                        break;
+                    }
+
+                    // Selection phase
+                    let selected_node = if iteration == 1 {
+                        // If this is the first iteration we have to alwys select
+                        // the root node
+                        Some(self.root_node_index)
+                    } else {
+                        self.select()
+                    };
+                    if let Some(selected_index) = selected_node {
+                        self.log_tree_state(selected_index, "Selected:");
+                    } else {
+                        println!("No node selected - terminating search");
+                        break;
+                    }
+
+                    // Expansion phase
+                    let new_node = selected_node.and_then(|n| self.expand(n));
+                    if let Some(new_index) = new_node {
+                        self.log_tree_state(new_index, "Expanded:");
+                    } else {
+                        println!("No expansion possible - terminating search");
+                        break;
+                    }
+
+                    let new_index = new_node.expect("Already checked above");
+
+                    // Reset and prepare node
+                    self.reset_file_system(new_index).await;
+
+                    self.generate_feedback_for_node(new_index, message_properties.clone())
+                        .await;
+
+                    // Simulation
+                    self.run_node(new_index, message_properties.clone()).await;
+                    self.log_tree_state(new_index, "After simulation:");
+
+                    // Backpropagation
+                    self.backpropogate(new_index);
+
+                    // change as necessary is saved over here
+                    self.save_serialised_graph(
+                        &self.log_directory,
+                        &message_properties.root_request_id(),
+                    )
+                    .await;
+
+                    // Log tree statistics
+                    println!(
+                        "Tree state: {} total nodes, {} expandable",
+                        self.index_to_node.len(),
+                        self.expandable_node(self.root_node_index).len()
+                    );
+                }
+                println!("==== SEARCH TREE IS COMPLETE {} ===", traj_counter);
+                // resetting iteration count here and starting again for the new traj
+                println!("=== RESETTING ITERATION UNIT ===");
+                iteration = 0;
+            } else {
+                break;
+            }
         }
         println!("=== Search Complete ===\n");
 

@@ -234,8 +234,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
         expansions,                                  // max_expansions
-        40,                                          // max_depth of the tree
-        400,                                         // max_iterations
+        100,                                         // max_depth of the tree
+        1000,                                        // max_iterations
         Some(5),                                     // max_finished_nodes
         None,                                        // reward_threshold
         Some(2),                                     // min_finished_nodes

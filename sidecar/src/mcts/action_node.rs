@@ -335,6 +335,8 @@ pub struct SearchTree {
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
+    /// Repository base commit hash
+    repo_base_commit_hash: String,
     // The tool box
     #[serde(skip)]
     tool_box: Arc<ToolBox>,
@@ -354,6 +356,7 @@ impl SearchTree {
         max_search_try: Option<usize>,
         root_directory: String,
         repo_name: String,
+        repo_base_commit_hash: String,
         problem_statement: String,
         selector: Selector,
         tools: Vec<ToolType>,
@@ -375,6 +378,7 @@ impl SearchTree {
             max_finished_nodes,
             reward_threshold,
             min_finished_nodes,
+            repo_base_commit_hash,
             selector,
             tool_box,
             tools,
@@ -1069,7 +1073,12 @@ impl SearchTree {
         }
     }
 
-    pub fn expand<'a>(&'a mut self, node_index: usize) -> Option<usize> {
+    pub fn expand<'a>(
+        &'a mut self,
+        node_index: usize,
+        // This allows us to go beyond the child capacity of the current node
+        allow_larger_child_expansions: bool,
+    ) -> Option<usize> {
         let node = self.get_node(node_index);
         if let None = node {
             return None;
@@ -1090,7 +1099,11 @@ impl SearchTree {
 
         // we have already expanded beyond the limit
         if children_len >= self.max_expansions {
-            return None;
+            if !allow_larger_child_expansions {
+                // we are not allowed to go beyond our current children lenght
+                // so fail hard
+                return None;
+            }
         }
 
         let child_node_index = self.get_new_node_index();
@@ -1401,6 +1414,15 @@ impl SearchTree {
             .output()
             .await
             .expect("to work");
+        // also run git reset --hard to the base commit
+        let _output = tokio::process::Command::new("git")
+            .arg("rest")
+            .arg("--hard")
+            .arg(self.repo_base_commit_hash.to_owned())
+            .current_dir(self.root_directory.to_owned())
+            .output()
+            .await
+            .expect("to work");
 
         let git_diff_output = tokio::process::Command::new("git")
             .arg("diff")
@@ -1468,7 +1490,10 @@ impl SearchTree {
                     )
                     .await;
 
-                    if self.is_finished() {
+                    // only finish when the current iteration is finished
+                    // and the iteration is not equal to 1 which means we are inside
+                    // and deep into the tree
+                    if self.is_finished() && iteration != 1 {
                         println!("Search finished - termination condition met");
                         break;
                     }
@@ -1489,7 +1514,9 @@ impl SearchTree {
                     }
 
                     // Expansion phase
-                    let new_node = selected_node.and_then(|n| self.expand(n));
+                    let is_maximum_exceed_allowed = iteration == 1; //  only allowed when we are at the root
+                    let new_node =
+                        selected_node.and_then(|n| self.expand(n, is_maximum_exceed_allowed));
                     if let Some(new_index) = new_node {
                         self.log_tree_state(new_index, "Expanded:");
                     } else {

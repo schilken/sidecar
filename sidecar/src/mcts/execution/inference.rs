@@ -758,12 +758,12 @@ This is part of the file which might not contain the method in full, if thats th
                     .ok_or(InferenceError::WrongToolOutput)?;
                 Ok(ActionObservation::new(
                     format!(
-                        r#"Here's the content of the file which you wanted to see
+                        r#"Here's the full content of the file:
 {}"#,
                         &response.to_string()
                     ),
                     format!(
-                        "Showed the content of the following file {}",
+                        "Showed the content of the following file:\n{}",
                         &open_file_path
                     ),
                     false,

@@ -194,9 +194,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // add the open file only if we are not in the json mode
-    if !args.json_mode {
-        tools.push(ToolType::OpenFile);
-    }
+    // if !args.json_mode {
+    //     tools.push(ToolType::OpenFile);
+    // }
+    tools.push(ToolType::OpenFile);
 
     let selector = Selector::new(
         1.0,         // exploitation_weight
@@ -220,9 +221,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
-        1,                                      // max_expansions
-        30,                                     // max_depth of the tree
-        100,                                    // max_iterations
+        3,                                      // max_expansions
+        40,                                     // max_depth of the tree
+        300,                                    // max_iterations
         Some(3),                                // max_finished_nodes
         None,                                   // reward_threshold
         Some(2),                                // min_finished_nodes

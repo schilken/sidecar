@@ -147,6 +147,12 @@ impl VariableInformation {
     }
 
     fn copy_at_instance(mut self) -> Self {
+        println!(
+            "variable:fs_file_path({})::initial_patch_is_some({})::patch_is_some({})",
+            self.fs_file_path.to_owned(),
+            self.initial_patch.is_some(),
+            self.patch.is_some()
+        );
         if let Some(node_patch) = self.patch.clone() {
             // update our patch first by generating the initial_patch as the patch
             // up until the previous node

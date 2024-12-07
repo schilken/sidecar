@@ -1210,6 +1210,16 @@ impl SearchTree {
         // update the node content over here
         if let Some(observation) = node.observation() {
             let updated_file_content = observation.get_updated_file_content();
+            println!(
+                "update_node::node_file_content_updated::node_index({})::({})",
+                node_index,
+                updated_file_content
+                    .keys()
+                    .into_iter()
+                    .map(|fs_file_path| fs_file_path.to_owned())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             updated_file_content
                 .into_iter()
                 .for_each(|(fs_file_path, updated_file_content)| {

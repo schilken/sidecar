@@ -36,10 +36,7 @@ impl AnthropicCodeEditor {
         }
 
         match params.command {
-            EditorCommand::View => self
-                .view(&path, params.view_range)
-                .await
-                .map(|output| ActionObservation::new(output.to_owned(), output.to_owned(), false)),
+            EditorCommand::View => self.view(&path, params.view_range).await,
             EditorCommand::Create => {
                 let file_text = params.file_text.ok_or_else(|| {
                     AnthropicEditorError::InputParametersMissing(
@@ -135,14 +132,16 @@ impl AnthropicCodeEditor {
         &self,
         path: &Path,
         view_range: Option<Vec<i32>>,
-    ) -> Result<String, AnthropicEditorError> {
+    ) -> Result<ActionObservation, AnthropicEditorError> {
         if path.is_dir() {
             if view_range.is_some() {
                 return Err(AnthropicEditorError::ViewCommandError(
                     "The `view_range` is not allowed for directories.".to_owned(),
                 ));
             }
-            return self.view_directory(path);
+            return self
+                .view_directory(path)
+                .map(|output| ActionObservation::new(output.to_owned(), output.to_owned(), false));
         }
 
         let file_content = self.read_file(path).await?;
@@ -153,7 +152,8 @@ impl AnthropicCodeEditor {
                 ));
             }
             let (start, end) = (range[0], range[1]);
-            let file_lines: Vec<&str> = file_content.lines().collect();
+            let cloned_file_content = file_content.clone();
+            let file_lines: Vec<&str> = cloned_file_content.lines().collect();
             let n_lines = file_lines.len() as i32;
 
             if start < 1 || start > n_lines {
@@ -178,10 +178,16 @@ impl AnthropicCodeEditor {
 
             (slice.join("\n"), start)
         } else {
-            (file_content, 1)
+            (file_content.to_owned(), 1)
         };
 
-        Ok(self.make_output(&content, &format!("{:?}", path), init_line))
+        let message = self.make_output(&content, &format!("{:?}", path), init_line);
+        Ok(
+            // always send the fact that we were able to view the file
+            // at this point, since the patch we will create will be on top of this
+            ActionObservation::new(message.to_owned(), message.to_owned(), false)
+                .file_content_updated(path.to_string_lossy().to_string(), file_content),
+        )
     }
 
     fn view_directory(&self, path: &Path) -> Result<String, AnthropicEditorError> {

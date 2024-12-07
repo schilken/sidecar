@@ -1470,6 +1470,10 @@ impl SearchTree {
             // Backpropagation
             self.backpropogate(new_index);
 
+            // change as necessary is saved over here
+            self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
+                .await;
+
             // Log tree statistics
             println!(
                 "Tree state: {} total nodes, {} expandable",
@@ -1548,7 +1552,7 @@ impl SearchTree {
                             // Unique colors for each EditorCommand
                             match &parameters.command {
                                 EditorCommand::Create => {
-                                    "str_replace_editor::create".black().to_string()
+                                    "str_replace_editor::create".purple().to_string()
                                 }
                                 EditorCommand::Insert => {
                                     "str_replace_editor::insert".yellow().to_string()
@@ -1560,7 +1564,7 @@ impl SearchTree {
                                     "str_replace_editor::undo_edit".white().to_string()
                                 }
                                 EditorCommand::View => {
-                                    "str_replace_editor::view".bright_black().to_string()
+                                    "str_replace_editor::view".magenta().to_string()
                                 }
                             }
                         }

@@ -786,10 +786,10 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             }
         });
 
-        // let root_request_id = input
-        //     .symbol_event_message_properties
-        //     .root_request_id()
-        //     .to_owned();
+        let root_request_id = input
+            .symbol_event_message_properties
+            .root_request_id()
+            .to_owned();
         let final_messages: Vec<_> = vec![system_message]
             .into_iter()
             .chain(previous_messages)
@@ -798,8 +798,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         let cancellation_token = input.symbol_event_message_properties.cancellation_token();
 
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
-        // we are going to fly blind for a bit before getting the tracing required
-        // let cloned_root_request_id = root_request_id.to_owned();
+        let cloned_root_request_id = root_request_id.to_owned();
         let response = run_with_cancellation(
             cancellation_token.clone(),
             tokio::spawn(async move {
@@ -813,12 +812,12 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                             None,
                         ),
                         // llm_properties.provider().clone(),
-                        // vec![
-                        //     ("event_type".to_owned(), "tool_use".to_owned()),
-                        //     ("root_id".to_owned(), cloned_root_request_id),
-                        // ]
-                        // .into_iter()
-                        // .collect(),
+                        vec![
+                            ("event_type".to_owned(), "tool_use".to_owned()),
+                            ("root_id".to_owned(), cloned_root_request_id),
+                        ]
+                        .into_iter()
+                        .collect(),
                         sender,
                     )
                     .await

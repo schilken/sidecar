@@ -78,7 +78,7 @@ pub enum FrameworkEvent {
     );
     let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
     let response = openai_client
-        .stream_completion_with_tool(api_key, request, sender)
+        .stream_completion_with_tool(api_key, request, Default::default(), sender)
         .await;
 
     // wait for the magic to show up in your stdout

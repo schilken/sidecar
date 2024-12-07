@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
+use logging::parea::{PareaClient, PareaLogCompletion, PareaLogMessage};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::debug;
 
@@ -393,11 +396,17 @@ impl AnthropicClient {
         &self,
         api_key: LLMProviderAPIKeys,
         request: LLMClientCompletionRequest,
+        metadata: HashMap<String, String>,
         sender: UnboundedSender<LLMClientCompletionResponse>,
         // The first parameter in the Vec<(String, (String, String))> is the tool_type and the
         // second one is (tool_id + serialized_json value of the tool use)
     ) -> Result<(String, Vec<(String, (String, String))>), LLMClientError> {
         let endpoint = self.chat_endpoint();
+        let messages = request
+            .messages()
+            .into_iter()
+            .map(|message| message.clone())
+            .collect::<Vec<_>>();
         let model_str = self.get_model_string(request.model())?;
         let message_tokens = request
             .messages()
@@ -543,6 +552,92 @@ impl AnthropicClient {
         if tool_use_indication.is_empty() {
             println!("anthropic::tool_not_found");
         }
+
+        let request_id = uuid::Uuid::new_v4();
+        let parea_log_completion = PareaLogCompletion::new(
+            messages
+                .into_iter()
+                .map(|message| {
+                    PareaLogMessage::new(message.role().to_string(), {
+                        // we generate the content in a special way so we can read it on parea
+                        let content = message.content();
+                        let tool_use_value = message
+                            .tool_use_value()
+                            .into_iter()
+                            .map(|tool_use_value| {
+                                serde_json::to_string(&tool_use_value).expect("to work")
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        let tool_return_value = message
+                            .tool_return_value()
+                            .into_iter()
+                            .map(|llm_return_value| {
+                                serde_json::to_string(&llm_return_value).expect("to work")
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        format!(
+                            r#"<content>
+{content}
+</content>
+<tool_use_value>
+{tool_use_value}
+</tool_use_value>
+<tool_return_value>
+{tool_return_value}
+</tool_return_value>"#
+                        )
+                    })
+                })
+                .collect::<Vec<_>>(),
+            metadata.clone(),
+            {
+                format!(
+                    "<content>
+{}
+</content>
+<tool_use_indication>
+{}
+</tool_use_indication>",
+                    &buffered_string,
+                    tool_use_indication
+                        .to_vec()
+                        .into_iter()
+                        .map(|(_, (tool_use_type, tool_use_value))| {
+                            format!(
+                                "<tool_use_value>
+<tool_type>
+{}
+</tool_type>
+<tool_content>
+{}
+</tool_content>
+</tool_use_value>",
+                                tool_use_type, tool_use_value
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            },
+            0.2,
+            request_id.to_string(),
+            request_id.to_string(),
+            metadata
+                .get("root_trace_id")
+                .map(|s| s.to_owned())
+                .unwrap_or(request_id.to_string()),
+            "ClaudeSonnet".to_owned(),
+            "Anthropic".to_owned(),
+            metadata
+                .get("event_type")
+                .map(|s| s.to_owned())
+                .unwrap_or("no_event_type".to_owned()),
+        );
+        let _ = PareaClient::new()
+            .log_completion(parea_log_completion)
+            .await;
 
         Ok((buffered_string, tool_use_indication))
     }

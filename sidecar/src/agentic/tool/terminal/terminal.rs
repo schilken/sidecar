@@ -25,6 +25,16 @@ impl TerminalInputPartial {
         &self.command
     }
 
+    pub fn sanitise_for_repro_script(self) -> Self {
+        if self.command.contains("reproduce_error.py") && self.command.contains("python") {
+            Self {
+                command: "python reproduce_error.py".to_owned(),
+            }
+        } else {
+            self
+        }
+    }
+
     pub fn to_string(&self) -> String {
         format!(
             r#"<thinking>

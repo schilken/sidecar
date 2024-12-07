@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use colored::Colorize;
 use llm_client::broker::LLMBroker;
 
 use crate::{
@@ -16,6 +17,7 @@ use crate::{
 };
 
 use super::{
+    agent_settings::settings::AgentSettings,
     execution::inference::InferenceEngine,
     feedback::feedback::FeedbackGenerator,
     selector::selector::Selector,
@@ -335,10 +337,8 @@ pub struct SearchTree {
     #[serde(skip)]
     tool_box: Arc<ToolBox>,
     log_directory: String,
-    /// The tools are in json mode?
-    is_json_mode: bool,
-    /// The agent is in midwit mode.. very basic
-    is_midwit_mode: bool,
+    /// Settings for the agent components
+    agent_settings: AgentSettings,
 }
 
 impl SearchTree {
@@ -357,8 +357,7 @@ impl SearchTree {
         tool_box: Arc<ToolBox>,
         llm_client: Arc<LLMBroker>,
         log_directory: String,
-        is_json_mode: bool,
-        is_midwit_mode: bool,
+        agent_settings: AgentSettings,
     ) -> Self {
         let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
@@ -379,8 +378,7 @@ impl SearchTree {
             llm_client,
             repo_name,
             log_directory,
-            is_json_mode,
-            is_midwit_mode,
+            agent_settings,
         }
     }
     pub fn root(&self) -> Option<&ActionNode> {
@@ -1244,7 +1242,7 @@ impl SearchTree {
         // trajectory
         let nodes_trajectory = self.trajectory(node_index);
 
-        let inference_engine = InferenceEngine::new(self.is_json_mode, self.is_midwit_mode);
+        let inference_engine = InferenceEngine::new(self.agent_settings.clone());
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node
@@ -1347,7 +1345,7 @@ impl SearchTree {
         message_properties: SymbolEventMessageProperties,
     ) {
         let nodes_trajectory = self.trajectory(node_index);
-        let feedback = FeedbackGenerator::new()
+        let feedback = FeedbackGenerator::new(self.agent_settings.clone())
             .generate_feedback_for_node(nodes_trajectory, &self, message_properties)
             .await;
         if let Ok(Some(feedback)) = feedback {
@@ -1539,23 +1537,61 @@ impl SearchTree {
         let mut state_params = Vec::new();
         if let Some(action) = &node.action {
             match action {
-                ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
+                ActionToolParameters::Errored(_err) => {
+                    // Show errors in bold red
+                    state_params.push("Error".bold().red().to_string());
+                }
                 ActionToolParameters::Tool(tool) => {
+                    let tool_type = tool.tool_input_partial().to_tool_type();
                     let tool_str = match tool.tool_input_partial() {
                         ToolInputPartial::CodeEditorParameters(parameters) => {
+                            // Unique colors for each EditorCommand
                             match &parameters.command {
-                                EditorCommand::Create => "str_replace_editor::create".to_owned(),
-                                EditorCommand::Insert => "str_replace_editor::insert".to_owned(),
+                                EditorCommand::Create => {
+                                    "str_replace_editor::create".black().to_string()
+                                }
+                                EditorCommand::Insert => {
+                                    "str_replace_editor::insert".yellow().to_string()
+                                }
                                 EditorCommand::StrReplace => {
-                                    "str_replace_editor::str_replace".to_owned()
+                                    "str_replace_editor::str_replace".blue().to_string()
                                 }
                                 EditorCommand::UndoEdit => {
-                                    "str_replace_editor::undo_edit".to_owned()
+                                    "str_replace_editor::undo_edit".white().to_string()
                                 }
-                                EditorCommand::View => "str_replace_editor::view".to_owned(),
+                                EditorCommand::View => {
+                                    "str_replace_editor::view".bright_black().to_string()
+                                }
                             }
                         }
-                        _ => tool.tool_input_partial().to_tool_type().to_string(),
+                        ToolInputPartial::CodeEditing(_) => {
+                            tool_type.to_string().bright_purple().to_string()
+                        }
+                        ToolInputPartial::ListFiles(_) => {
+                            tool_type.to_string().bright_yellow().to_string()
+                        }
+                        ToolInputPartial::SearchFileContentWithRegex(_) => {
+                            tool_type.to_string().bright_blue().to_string()
+                        }
+                        ToolInputPartial::OpenFile(_) => {
+                            tool_type.to_string().bright_magenta().to_string()
+                        }
+                        ToolInputPartial::LSPDiagnostics(_) => {
+                            tool_type.to_string().bright_cyan().to_string()
+                        }
+                        ToolInputPartial::TerminalCommand(_) => {
+                            tool_type.to_string().bright_red().to_string()
+                        }
+                        ToolInputPartial::AskFollowupQuestions(_) => {
+                            tool_type.to_string().bright_white().to_string()
+                        }
+                        ToolInputPartial::AttemptCompletion(_) => {
+                            tool_type.to_string().bright_green().to_string()
+                        }
+                        ToolInputPartial::RepoMapGeneration(_) => {
+                            tool_type.to_string().magenta().to_string()
+                        }
+                        ToolInputPartial::TestRunner(_) => tool_type.to_string().red().to_string(),
                     };
                     state_params.push(tool_str);
                 }
@@ -1563,7 +1599,7 @@ impl SearchTree {
 
             if let Some(observation) = &node.observation {
                 if observation.expect_correction {
-                    state_params.push("expect_correction".to_string());
+                    state_params.push("expect_correction".to_string().red().to_string());
                 }
             }
         }
@@ -1594,7 +1630,10 @@ impl SearchTree {
 
         // Print the current node
         if node.is_duplicate {
-            println!("{}{}{} {} (dup)", prefix, branch, node_str, state_info);
+            println!(
+                "{}",
+                format!("{}{}{} {} (dup)", prefix, branch, node_str, state_info).bright_red()
+            );
         } else {
             println!(
                 "{}{}{} {} (ex: {}, vi: {}, re: {})",

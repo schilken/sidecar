@@ -202,8 +202,11 @@ impl VariableInformation {
     }
 
     pub fn update_content(mut self, updated_content: &str) -> Self {
-        let base_content = self.base_content();
-        self.patch = Some(diffy::create_patch(&base_content, updated_content).to_string());
+        // hard update our content over here so we override our content
+        // and store no patches since they are going to be part of observations
+        self.content = updated_content.to_owned();
+        // let base_content = self.base_content();
+        // self.patch = Some(diffy::create_patch(&base_content, updated_content).to_string());
         self
     }
 

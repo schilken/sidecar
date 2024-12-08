@@ -295,7 +295,11 @@ impl AnthropicRequest {
                     .collect::<Vec<_>>();
                 // if we have a tool return then we should not add the content string at all
                 let final_content = if tool_return.is_empty() {
-                    vec![anthropic_message_content]
+                    if message.content().is_empty() {
+                        vec![]
+                    } else {
+                        vec![anthropic_message_content]
+                    }
                 } else {
                     vec![]
                 }

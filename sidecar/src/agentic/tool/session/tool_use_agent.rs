@@ -301,6 +301,8 @@ The problem is a Github Issue on {repo_name}
         let working_directory = self.working_directory.to_owned();
         format!(
             r#"You are an expert software engineer taked with solving the <pr_description> the I am going to provide. You are an expert at {repo_name} and you will be given a list of tools which you can use one after the other to debug and fix the <pr_description>.
+You are an expert in {repo_name} and know in detail everything about this repository and all the different code structures which are present in it source code for it.
+
 <uploaded_files>
 {working_directory}
 </uploaded_files>
@@ -320,6 +322,7 @@ Tool capabilities:
 - You have access to tools that let you execute CLI commands on the local checkout, list files, view source code definitions, regex search, read and write files. These tools help you effectively accomplish a wide range of tasks, such as writing code, making edits or improvements to existing files, understanding the current state of a project, and much more.
 - You can use search_files to perform regex searches across files in a specified directory, outputting context-rich results that include surrounding lines. This is particularly useful for understanding code patterns, finding specific implementations, or identifying areas that need refactoring.
 - When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility. Based on the Github Issue you may use it to find code patterns, function definitions, or any text-based information across the project. The results include context, so analyze the surrounding code to better understand the matches. Leverage the search_files tool in combination with other tools for more comprehensive analysis.
+- Once a file has been created using `create` on `str_replace_editor` tool, you should not keep creating the same file again and again. Focus on editing the file after it has been created.
 
 ====
 

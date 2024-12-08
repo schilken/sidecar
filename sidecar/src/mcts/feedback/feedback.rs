@@ -107,7 +107,7 @@ impl FeedbackGenerator {
 
 **Context you will receive:**
 
-    * Task Description: The main problem or objective that needs to be addressed wrapped in a <task> tag.
+    * Task Description: The main problem or objective that needs to be addressed wrapped in a <pr_description> tag.
     * Available Actions: The list of actions available to the agent.
     * History: The conversation leading up to the current state.
     * Hypothetical Attempts: Considred actions that NOT been executed in the current branch. They are hypothetical and serve as insights.
@@ -118,18 +118,19 @@ impl FeedbackGenerator {
     * Analyze What to Do Next: Combine your understanding of the task with insights from considred attempts (which are hypothetical and unexecuted) to determine the best next step.
     * Provide Feedback: Offer strategic guidance that focuses on novel and diverse solutions to address the task directly.
     * Avoid Duplicates: Strongly discourage repeating any actions flagged as duplicates.
+    * Reproducing the error: Direct the AI assistant towards generating a SMALL reproduction of the <pr_description>. Often times there are test setup issues and your feedback should try to fix as many of them in a single go as possible.
 
 **Instructions:**
 
-    * Analysis: Begin with a brief analysis that combines understanding the task and insights from considered (hypothetical) attempts, focusing on what should be done next.
-    * Direct Feedback: Provide one concrete and innovative suggestion for the next action, specifying which available action to use (using the exact name from Available Actions) and how it addresses the task.
+    * Analysis: Begin with a thorough analysis that combines understanding the task and insights from considered (hypothetical) attempts, focusing on what should be done next.
+    * Direct Feedback: Provide one concrete and innovative suggestion for the next action, specifying which available action to use (using the exact name from Available Actions) and how it addresses the task. Focus on details over here and try to avoid taking the same action. Your feedback should either help the AI assistant not make the same mistakes or provide a new novel direction to approach.
 
 **Guiding philosophy**
     * Focus on the task's objectives and encourage a novel solution that hasn't been explored yet.
     * Make sure to check the History to understand the trajectory the agent is one.
-    * You are not allowed to make any changes to the tests directory
+    * You are not allowed to make any changes to the tests directory, and we are NOT ALLOWED TO RUN TESTS. This means that advising the AI assistant to run tests is not useful and instead focussing on getting the reproduce_error script to work is of utmost importance.
     * I've already taken care of all changes to any of the test files described in the <pr_description>. This means we can't modify the testing logic or any of the tests in any way!
-    
+
 Remember: Focus on the task's objectives and encourage a novel solution that hasn't been explored yet. Use previous attempts as learning points but do not let them constrain your creativity in solving the task. The considered attempts are hypothetical and should inform, but not limit, your suggested action."#
             )
         } else {

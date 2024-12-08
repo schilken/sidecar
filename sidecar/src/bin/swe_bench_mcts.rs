@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let agent_settings = AgentSettings::new(args.json_mode, args.midwit_mode);
 
     // The bad actions which hurt the check_for_bad_children_actions
-    let bad_actions = if agent_settings.is_midwit() {
+    let bad_actions = if agent_settings.is_json() {
         vec![ToolType::CodeEditorTool]
     } else {
         vec![ToolType::CodeEditing]
@@ -228,15 +228,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // if we are doing single traj then only allow for a single node expansion
         1
     } else {
-        3
+        2
     };
 
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
         expansions,                                  // max_expansions
-        100,                                         // max_depth of the tree
+        40,                                          // max_depth of the tree
         1000,                                        // max_iterations
-        Some(10),                                    // max_finished_nodes
+        Some(5),                                     // max_finished_nodes
         None,                                        // reward_threshold
         Some(2),                                     // min_finished_nodes
         args.single_traj_search,                     // max_search_try

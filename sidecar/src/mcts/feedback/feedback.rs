@@ -130,6 +130,7 @@ impl FeedbackGenerator {
     * Make sure to check the History to understand the trajectory the agent is one.
     * You are not allowed to make any changes to the tests directory, and we are NOT ALLOWED TO RUN TESTS. This means that advising the AI assistant to run tests is not useful and instead focussing on getting the reproduce_error script to work is of utmost importance.
     * I've already taken care of all changes to any of the test files described in the <pr_description>. This means we can't modify the testing logic or any of the tests in any way!
+    * If you notice that the AI assistant is going down a rabbit hole of changes, your feedback should help the assistant recognise that and try for a simpler solution. SIMPLER SOLUTIONS are always preferred by the system.
 
 Remember: Focus on the task's objectives and encourage a novel solution that hasn't been explored yet. Use previous attempts as learning points but do not let them constrain your creativity in solving the task. The considered attempts are hypothetical and should inform, but not limit, your suggested action."#
             )

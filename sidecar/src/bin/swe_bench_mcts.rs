@@ -235,7 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut search_tree = SearchTree::new(
         expansions,                                  // max_expansions
         40,                                          // max_depth of the tree
-        1000,                                        // max_iterations
+        400,                                         // max_iterations
         Some(5),                                     // max_finished_nodes
         None,                                        // reward_threshold
         Some(2),                                     // min_finished_nodes

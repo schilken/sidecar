@@ -154,21 +154,29 @@ impl InferenceEngine {
                             match tool_schema {
                                 Some(value) => {
                                     // add the observation over here as well
-                                    message_history.push(
+                                    let llm_client_message = if self.agent_settings.is_midwit() {
+                                        match observation.thinking() {
+                                            Some(thinking) => {
+                                                LLMClientMessage::assistant(thinking.to_owned())
+                                            }
+                                            None => LLMClientMessage::assistant(
+                                                "<thinking>\n...\n</thinking>".to_owned(),
+                                            ),
+                                        }
+                                    } else {
                                         LLMClientMessage::assistant(
                                             "<thinking>\n...\n</thinking>".to_owned(),
                                         )
-                                        .insert_tool_use(
-                                            LLMClientToolUse::new(
-                                                tool_parameters
-                                                    .tool_input_partial()
-                                                    .to_tool_type()
-                                                    .to_string(),
-                                                tool_parameters.tool_use_id().to_owned(),
-                                                value,
-                                            ),
-                                        ),
-                                    );
+                                    }
+                                    .insert_tool_use(LLMClientToolUse::new(
+                                        tool_parameters
+                                            .tool_input_partial()
+                                            .to_tool_type()
+                                            .to_string(),
+                                        tool_parameters.tool_use_id().to_owned(),
+                                        value,
+                                    ));
+                                    message_history.push(llm_client_message);
                                     message_history.push(
                                         LLMClientMessage::user("".to_owned())
                                             .insert_tool_return_values(vec![
@@ -282,13 +290,14 @@ impl InferenceEngine {
             Ok(tool_use_parameters) => match tool_use_parameters {
                 // we are going to execute this branch of the code so we can get the output
                 // over here
-                ToolUseAgentOutputWithTools::Success((tool_input_partial, _)) => {
+                ToolUseAgentOutputWithTools::Success((tool_input_partial, thinking)) => {
                     if tool_input_partial.is_empty() {
                         return Ok(InferenceEngineResult::new(
                             Some(ActionObservation::errored(
                                 "failed to use any tool, please be careful".to_owned(),
                                 // we failed to parse the tool output, so we can expect an correction
                                 // over here
+                                Some(thinking),
                                 true,
                                 false,
                             )),
@@ -312,6 +321,7 @@ impl InferenceEngine {
                         let node_execution_output = self
                             .execute_tool_and_generate_observation(
                                 tool_input_partial,
+                                thinking.to_owned(),
                                 tool_box.clone(),
                                 message_properties.clone(),
                             )
@@ -327,19 +337,25 @@ impl InferenceEngine {
                                 // messed up because we try our best to create an observation
                                 // even for the failure cases, generally this means an infra
                                 // failure so this is terminal
-                                Some(ActionObservation::errored(e.to_string(), false, true)),
+                                Some(ActionObservation::errored(
+                                    e.to_string(),
+                                    Some(thinking.to_owned()),
+                                    false,
+                                    true,
+                                )),
                                 tool_parameters,
                                 false,
                             )),
                         }
                     }
                 }
-                ToolUseAgentOutputWithTools::Failure => {
+                ToolUseAgentOutputWithTools::Failure(thinking) => {
                     Ok(InferenceEngineResult::new(
                         Some(ActionObservation::errored(
                             "Failed to generate a tool to use".to_owned(),
                             // we failed to parse the tool output, so we can expect an correction
                             // over here
+                            thinking,
                             true,
                             false,
                         )),
@@ -352,7 +368,7 @@ impl InferenceEngine {
             },
             Err(e) => Ok(InferenceEngineResult::new(
                 // This is an infra error so we can't expect a correction and this is terminal
-                Some(ActionObservation::errored(e.to_string(), false, true)),
+                Some(ActionObservation::errored(e.to_string(), None, false, true)),
                 ActionToolParameters::errored(e.to_string()),
                 false,
             )),
@@ -408,7 +424,7 @@ Always include the <thinking></thinking> section before using the tool."#
             Ok(tool_use_parameters) => match tool_use_parameters {
                 // we are going to execute this branch of the code so we can get the output
                 // over here
-                ToolUseAgentOutput::Success((tool_input_partial, _)) => {
+                ToolUseAgentOutput::Success((tool_input_partial, thinking)) => {
                     let tool_parameters = ActionToolParameters::tool(
                         "tool_use".to_owned(),
                         tool_input_partial.clone(),
@@ -425,6 +441,7 @@ Always include the <thinking></thinking> section before using the tool."#
                         let node_execution_output = self
                             .execute_tool_and_generate_observation(
                                 tool_input_partial,
+                                thinking.to_owned(),
                                 tool_box.clone(),
                                 message_properties.clone(),
                             )
@@ -440,7 +457,12 @@ Always include the <thinking></thinking> section before using the tool."#
                                 // messed up because we try our best to create an observation
                                 // even for the failure cases, generally this means an infra
                                 // failure so this is terminal
-                                Some(ActionObservation::errored(e.to_string(), false, true)),
+                                Some(ActionObservation::errored(
+                                    e.to_string(),
+                                    Some(thinking),
+                                    false,
+                                    true,
+                                )),
                                 tool_parameters,
                                 false,
                             )),
@@ -452,6 +474,7 @@ Always include the <thinking></thinking> section before using the tool."#
                         failed_string.to_owned(),
                         // we failed to parse the tool output, so we can expect an correction
                         // over here
+                        None,
                         true,
                         false,
                     )),
@@ -461,7 +484,7 @@ Always include the <thinking></thinking> section before using the tool."#
             },
             Err(e) => Ok(InferenceEngineResult::new(
                 // This is an infra error so we can't expect a correction and this is terminal
-                Some(ActionObservation::errored(e.to_string(), false, true)),
+                Some(ActionObservation::errored(e.to_string(), None, false, true)),
                 ActionToolParameters::errored(e.to_string()),
                 false,
             )),
@@ -471,6 +494,7 @@ Always include the <thinking></thinking> section before using the tool."#
     async fn execute_tool_and_generate_observation(
         &self,
         tool_input_partial: ToolInputPartial,
+        tool_thinking: String,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<ActionObservation, InferenceError> {
@@ -481,7 +505,12 @@ Always include the <thinking></thinking> section before using the tool."#
             }
             ToolInputPartial::AttemptCompletion(attemp_completion) => {
                 let message = attemp_completion.to_string();
-                Ok(ActionObservation::new(message.to_owned(), message, true))
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message,
+                    Some(tool_thinking),
+                    true,
+                ))
             }
             ToolInputPartial::CodeEditing(code_editing) => {
                 let fs_file_path = code_editing.fs_file_path().to_owned();
@@ -711,8 +740,13 @@ This is part of the file which might not contain the method in full, if thats th
 {generated_diff}"#
                         )
                     };
-                    Ok(ActionObservation::new(message.to_owned(), message, false)
-                        .file_content_updated(fs_file_path, updated_code))
+                    Ok(ActionObservation::new(
+                        message.to_owned(),
+                        message,
+                        Some(tool_thinking),
+                        false,
+                    )
+                    .file_content_updated(fs_file_path, updated_code))
                 }
             }
             ToolInputPartial::LSPDiagnostics(_) => {
@@ -743,6 +777,7 @@ This is part of the file which might not contain the method in full, if thats th
                 Ok(ActionObservation::new(
                     message.to_owned(),
                     message.to_owned(),
+                    Some(tool_thinking),
                     false,
                 ))
             }
@@ -770,6 +805,7 @@ This is part of the file which might not contain the method in full, if thats th
                         "Showed the content of the following file:\n{}",
                         &open_file_path
                     ),
+                    Some(tool_thinking),
                     false,
                 )
                 .file_content_updated(open_file_path.to_owned(), response.to_content()))
@@ -792,7 +828,12 @@ This is part of the file which might not contain the method in full, if thats th
                     r#"Here's the outline of classes and functions present in the directory {directory_path}
 {repo_map_str}"#
                 );
-                Ok(ActionObservation::new(message.to_owned(), message, false))
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message,
+                    Some(tool_thinking),
+                    false,
+                ))
             }
             ToolInputPartial::SearchFileContentWithRegex(search_file) => {
                 let request = SearchFileContentInput::new(
@@ -815,7 +856,12 @@ This is part of the file which might not contain the method in full, if thats th
 {}"#,
                     response
                 );
-                Ok(ActionObservation::new(message.to_owned(), message, false))
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message,
+                    Some(tool_thinking),
+                    false,
+                ))
             }
             ToolInputPartial::TerminalCommand(terminal_command) => {
                 let command = terminal_command.command().to_owned();
@@ -836,7 +882,12 @@ Command: {}
 Terminal output: {}"#,
                     command, output
                 );
-                Ok(ActionObservation::new(message.to_owned(), message, false))
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message,
+                    Some(tool_thinking),
+                    false,
+                ))
             }
             ToolInputPartial::TestRunner(test_runner_output) => {
                 let editor_url = message_properties.editor_url().to_owned();
@@ -862,14 +913,24 @@ Output:
                     response.exit_code(),
                     response.test_output()
                 );
-                Ok(ActionObservation::new(message.to_owned(), message, false))
+                Ok(ActionObservation::new(
+                    message.to_owned(),
+                    message,
+                    Some(tool_thinking),
+                    false,
+                ))
             }
             ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {
-                let editor = AnthropicCodeEditor::new();
+                let editor = AnthropicCodeEditor::new(tool_thinking.to_owned());
                 let observation = editor.run_command(code_editor_parameters).await;
                 match observation {
                     Ok(observation_ok) => Ok(observation_ok),
-                    Err(e) => Ok(ActionObservation::errored(e.to_string(), true, false)),
+                    Err(e) => Ok(ActionObservation::errored(
+                        e.to_string(),
+                        Some(tool_thinking),
+                        true,
+                        false,
+                    )),
                 }
             }
         }

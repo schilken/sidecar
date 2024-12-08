@@ -37,6 +37,8 @@ pub enum ActionObservationMetadataKey {
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
+    /// The thinking which lead to this action being taken
+    thinking: Option<String>,
     terminal: bool,
     expect_correction: bool,
     #[serde(skip)]
@@ -44,20 +46,27 @@ pub struct ActionObservation {
 }
 
 impl ActionObservation {
-    pub fn errored(message: String, expect_correction: bool, terminal: bool) -> Self {
+    pub fn errored(
+        message: String,
+        thinking: Option<String>,
+        expect_correction: bool,
+        terminal: bool,
+    ) -> Self {
         Self {
             message,
             summary: None,
+            thinking,
             terminal,
             expect_correction,
             metadata: Default::default(),
         }
     }
 
-    pub fn new(message: String, summary: String, terminal: bool) -> Self {
+    pub fn new(message: String, summary: String, thinking: Option<String>, terminal: bool) -> Self {
         Self {
             message,
             summary: Some(summary),
+            thinking,
             terminal,
             expect_correction: false,
             metadata: Default::default(),
@@ -94,6 +103,10 @@ impl ActionObservation {
 
     pub fn expect_correction(&self) -> bool {
         self.expect_correction
+    }
+
+    pub fn thinking(&self) -> Option<String> {
+        self.thinking.clone()
     }
 }
 

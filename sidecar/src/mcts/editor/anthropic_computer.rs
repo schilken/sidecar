@@ -8,7 +8,9 @@ use crate::{
 
 use super::error::AnthropicEditorError;
 
-pub struct AnthropicCodeEditor {}
+pub struct AnthropicCodeEditor {
+    tool_thinking: String,
+}
 
 fn maybe_truncate(s: &str) -> String {
     let max_lines = 200; // arbitrary limit to mimic Python code’s truncation
@@ -23,8 +25,8 @@ fn maybe_truncate(s: &str) -> String {
 }
 
 impl AnthropicCodeEditor {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(tool_thinking: String) -> Self {
+        Self { tool_thinking }
     }
     pub async fn run_command(
         &self,
@@ -43,7 +45,7 @@ impl AnthropicCodeEditor {
                         "Parameter `file_text` required for `create`.".to_owned(),
                     )
                 })?;
-                dbg!(self.create(&path, &file_text).await)
+                self.create(&path, &file_text).await
             }
             EditorCommand::StrReplace => {
                 let old_str = params.old_str.ok_or_else(|| {
@@ -52,7 +54,7 @@ impl AnthropicCodeEditor {
                     )
                 })?;
                 let new_str = params.new_str;
-                dbg!(self.str_replace(&path, &old_str, new_str.as_deref()).await)
+                self.str_replace(&path, &old_str, new_str.as_deref()).await
             }
             EditorCommand::Insert => {
                 let insert_line = params.insert_line.ok_or_else(|| {
@@ -69,6 +71,7 @@ impl AnthropicCodeEditor {
             }
             EditorCommand::UndoEdit => Ok(ActionObservation::errored(
                 "undo_edit not supported, use str_replace instead".to_owned(),
+                Some(self.tool_thinking.to_owned()),
                 true,
                 false,
             )),
@@ -95,6 +98,7 @@ impl AnthropicCodeEditor {
                 if !path.exists() {
                     return Some(ActionObservation::errored(
                         format!("The path {:?} does not exist.", path),
+                        Some(self.tool_thinking.to_owned()),
                         true,
                         false,
                     ));
@@ -108,6 +112,7 @@ impl AnthropicCodeEditor {
                     "The path {:?} is a directory and only `list_files` can be used on directories.",
                     path
                 ),
+                Some(self.tool_thinking.to_owned()),
                 true,
                 false,
             ));
@@ -124,8 +129,13 @@ impl AnthropicCodeEditor {
         self.write_file(path, file_text).await?;
 
         let message = format!("File created successfully at: {:?}", path);
-        Ok(ActionObservation::new(message.to_owned(), message, false)
-            .file_content_updated(path.to_string_lossy().to_string(), file_text.to_owned()))
+        Ok(ActionObservation::new(
+            message.to_owned(),
+            message,
+            Some(self.tool_thinking.to_owned()),
+            false,
+        )
+        .file_content_updated(path.to_string_lossy().to_string(), file_text.to_owned()))
     }
 
     async fn view(
@@ -139,9 +149,14 @@ impl AnthropicCodeEditor {
                     "The `view_range` is not allowed for directories.".to_owned(),
                 ));
             }
-            return self
-                .view_directory(path)
-                .map(|output| ActionObservation::new(output.to_owned(), output.to_owned(), false));
+            return self.view_directory(path).map(|output| {
+                ActionObservation::new(
+                    output.to_owned(),
+                    output.to_owned(),
+                    Some(self.tool_thinking.to_owned()),
+                    false,
+                )
+            });
         }
 
         let file_content = self.read_file(path).await?;
@@ -185,8 +200,13 @@ impl AnthropicCodeEditor {
         Ok(
             // always send the fact that we were able to view the file
             // at this point, since the patch we will create will be on top of this
-            ActionObservation::new(message.to_owned(), message.to_owned(), false)
-                .file_content_updated(path.to_string_lossy().to_string(), file_content),
+            ActionObservation::new(
+                message.to_owned(),
+                message.to_owned(),
+                Some(self.tool_thinking.to_owned()),
+                false,
+            )
+            .file_content_updated(path.to_string_lossy().to_string(), file_content),
         )
     }
 
@@ -223,12 +243,12 @@ impl AnthropicCodeEditor {
         new_str: Option<&str>,
     ) -> Result<ActionObservation, AnthropicEditorError> {
         let file_content = self.read_file(path).await?;
-        dbg!(&file_content);
         let occurrences = file_content.matches(old_str).count();
 
         if occurrences == 0 {
             return Ok(ActionObservation::errored(
                 format!("No occurrence of `{}` found in {:?}.", old_str, path),
+                Some(self.tool_thinking.to_owned()),
                 true,
                 false,
             ));
@@ -245,6 +265,7 @@ impl AnthropicCodeEditor {
                     "Multiple occurrences of `{}` found in lines {:?}. Please ensure uniqueness.",
                     old_str, lines
                 ),
+                Some(self.tool_thinking.to_owned()),
                 true,
                 false,
             ));
@@ -258,12 +279,16 @@ impl AnthropicCodeEditor {
         let mut msg = format!("The file {:?} has been edited. ", path);
         msg.push_str(&self.make_output(&snippet, &format!("a snippet of {:?}", path), 1));
         msg.push_str("Review the changes if necessary.");
-        Ok(
-            ActionObservation::new(msg.to_owned(), msg.to_owned(), false).file_content_updated(
-                path.to_string_lossy().to_string(),
-                new_file_content.to_owned(),
-            ),
+        Ok(ActionObservation::new(
+            msg.to_owned(),
+            msg.to_owned(),
+            Some(self.tool_thinking.to_owned()),
+            false,
         )
+        .file_content_updated(
+            path.to_string_lossy().to_string(),
+            new_file_content.to_owned(),
+        ))
     }
 
     async fn insert(
@@ -282,6 +307,7 @@ impl AnthropicCodeEditor {
                     "`insert_line` {} out of range [0, {}].",
                     insert_line, n_lines
                 ),
+                Some(self.tool_thinking.to_owned()),
                 true,
                 false,
             ));
@@ -306,10 +332,13 @@ impl AnthropicCodeEditor {
         msg.push_str(
             "Review the changes and make sure they are correct (indentation, no duplicates, etc).",
         );
-        Ok(
-            ActionObservation::new(msg.to_owned(), msg.to_owned(), false)
-                .file_content_updated(path.to_string_lossy().to_string(), new_file_text),
+        Ok(ActionObservation::new(
+            msg.to_owned(),
+            msg.to_owned(),
+            Some(self.tool_thinking.to_owned()),
+            false,
         )
+        .file_content_updated(path.to_string_lossy().to_string(), new_file_text))
     }
 
     async fn read_file(&self, path: &Path) -> Result<String, AnthropicEditorError> {

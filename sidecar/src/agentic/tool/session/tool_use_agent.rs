@@ -95,7 +95,8 @@ pub enum ToolUseAgentOutputWithTools {
     /// Vec<(String, ToolInputPartial)> -> Vec<(tool_use_id, tool_input_params)>
     /// String -> thinking string
     Success((Vec<(String, ToolInputPartial)>, String)),
-    Failure,
+    /// Option<String> -> If we were able to get the thinking string for the tool use
+    Failure(Option<String>),
 }
 
 #[derive(Debug)]
@@ -886,10 +887,11 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
 
             Ok(ToolUseAgentOutputWithTools::Success((
                 tool_inputs_parsed,
-                thinking,
+                // trim the string properly so we remove all the \n
+                thinking.trim().to_owned(),
             )))
         } else {
-            Ok(ToolUseAgentOutputWithTools::Failure)
+            Ok(ToolUseAgentOutputWithTools::Failure(None))
         }
     }
 

@@ -8,6 +8,7 @@ use llm_client::clients::types::{LLMClientMessage, LLMClientToolReturn, LLMClien
 use crate::{
     agentic::{
         symbol::{
+            errors::SymbolError,
             events::{edit::SymbolToEdit, message_event::SymbolEventMessageProperties},
             identifier::SymbolIdentifier,
             tool_box::ToolBox,
@@ -282,8 +283,28 @@ impl InferenceEngine {
             message_properties.clone(),
         );
 
-        // now create the input for the tool use agent
-        let tool_use_output = tool_use_agent.invoke_json_tool(tool_agent_input).await;
+        // have a retry logic here which tries hard to make sure there are no errors
+        // when creating the tool which needs to be used
+        let mut tool_retry_index = 0;
+        // we can try a max of 3 times before giving up
+        let max_tool_retry = 3;
+
+        let mut tool_use_output: Result<ToolUseAgentOutputWithTools, SymbolError>;
+        loop {
+            tool_use_output = tool_use_agent
+                .invoke_json_tool(tool_agent_input.clone())
+                .await;
+            if tool_use_output.is_ok() {
+                break;
+            } else {
+                println!("inference::engine::retrying_tool_call::erroredbefore");
+                // just give it a plain retry and call it a day
+                tool_retry_index = tool_retry_index + 1;
+            }
+            if tool_retry_index >= max_tool_retry {
+                break;
+            }
+        }
 
         // Now we get the tool use output
         match tool_use_output {
@@ -368,6 +389,8 @@ impl InferenceEngine {
             },
             Err(e) => Ok(InferenceEngineResult::new(
                 // This is an infra error so we can't expect a correction and this is terminal
+                // ideally we should expect a correction over here so that we do not mess
+                // up our trajectory and the LLM gets confused and put into a box
                 Some(ActionObservation::errored(e.to_string(), None, false, true)),
                 ActionToolParameters::errored(e.to_string()),
                 false,

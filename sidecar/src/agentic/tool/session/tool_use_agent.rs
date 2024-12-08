@@ -38,6 +38,7 @@ use super::{
     attempt_completion::AttemptCompletionClientRequest, chat::SessionChatMessage,
 };
 
+#[derive(Clone)]
 pub struct ToolUseAgentInputOnlyTools {
     session_messages: Vec<SessionChatMessage>,
     tools: Vec<serde_json::Value>,

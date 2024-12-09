@@ -3,7 +3,9 @@ use llm_client::{
     broker::LLMBroker,
     clients::types::LLMType,
     config::LLMBrokerConfiguration,
-    provider::{AnthropicAPIKey, GoogleAIStudioKey, LLMProvider, LLMProviderAPIKeys},
+    provider::{
+        AnthropicAPIKey, GoogleAIStudioKey, LLMProvider, LLMProviderAPIKeys, OpenRouterAPIKey,
+    },
 };
 use serde::{Deserialize, Serialize};
 use sidecar::{
@@ -45,8 +47,12 @@ struct CliArgs {
     input: PathBuf,
 
     /// Anthropic api key
-    #[arg(long)]
-    anthropic_api_key: String,
+    #[arg(long, default_value = None)]
+    anthropic_api_key: Option<String>,
+
+    /// OPen Router api key
+    #[arg(long, default_value = None)]
+    openrouter_api_key: Option<String>,
 
     /// The run id for the current run
     #[arg(long)]
@@ -136,17 +142,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input_path = args.input;
     let run_id = args.run_id.to_owned();
     let repo_name = args.repo_name.to_owned();
-    let anthropic_api_key = args.anthropic_api_key.to_owned();
     let log_directory = args.log_directory.to_owned();
     let input_content = tokio::fs::read(input_path).await.expect("path content");
     let input_parts: InputParts =
         serde_json::from_slice(&input_content).expect("Parse the serde json");
 
-    let model_configuration = LLMProperties::new(
-        LLMType::ClaudeSonnet,
-        LLMProvider::Anthropic,
-        LLMProviderAPIKeys::Anthropic(AnthropicAPIKey::new(anthropic_api_key)),
-    );
+    let model_configuration: LLMProperties;
+    if let Some(anthropic_key) = args.anthropic_api_key {
+        model_configuration = LLMProperties::new(
+            LLMType::ClaudeSonnet,
+            LLMProvider::Anthropic,
+            LLMProviderAPIKeys::Anthropic(AnthropicAPIKey::new(anthropic_key)),
+        );
+    } else if let Some(open_router_key) = args.openrouter_api_key {
+        model_configuration = LLMProperties::new(
+            LLMType::ClaudeSonnet,
+            LLMProvider::OpenRouter,
+            LLMProviderAPIKeys::OpenRouter(OpenRouterAPIKey::new(open_router_key)),
+        );
+    } else {
+        println!("NO VALID KEY FOUND, TERMINATING");
+        return Ok(());
+    }
 
     let session_id = format!(
         "{}-{}",
@@ -234,7 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
         expansions,                                  // max_expansions
-        40,                                          // max_depth of the tree
+        30,                                          // max_depth of the tree
         400,                                         // max_iterations
         Some(5),                                     // max_finished_nodes
         None,                                        // reward_threshold

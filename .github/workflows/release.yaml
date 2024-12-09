@@ -36,6 +36,10 @@ jobs:
       with:
         python-version: '3.13'
 
+    - name: Point gcloud SDK to Python
+      shell: bash
+      run: echo "CLOUDSDK_PYTHON=$(which python)" >> $GITHUB_ENV
+
     - name: Extract build target information
       shell: bash
       run: |

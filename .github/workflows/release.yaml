@@ -56,8 +56,9 @@ jobs:
         esac
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
       with:
+        toolchain: 1.83.0
         targets: ${{ matrix.job.target }}
         components: rust-src, rust-std
 

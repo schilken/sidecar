@@ -41,27 +41,14 @@ jobs:
         echo "ARCH=${ARCH}" >> $GITHUB_ENV
 
     - name: Install Linux cross-compilation dependencies
+      if: runner.os == 'Linux'
       shell: bash
       run: |
+        sudo apt-get -y update
+        sudo apt-get -y install libssl-dev pkg-config
         case ${{ matrix.job.target }} in
-          arm-unknown-linux-*)
-            sudo apt-get -y update
-            sudo apt-get -y install gcc-arm-linux-gnueabihf
-            sudo apt-get -y install libssl-dev:armhf pkg-config
-            ;;
-          aarch64-unknown-linux-gnu)
-            sudo apt-get -y update
-            sudo apt-get -y install gcc-aarch64-linux-gnu
-            sudo apt-get -y install libssl-dev:arm64 pkg-config
-            ;;
-          riscv64-unknown-linux-gnu)
-            sudo apt-get -y update
-            sudo apt-get -y install libssl-dev pkg-config
-            ;;
-          x86_64-unknown-linux-gnu)
-            sudo apt-get -y update
-            sudo apt-get -y install libssl-dev pkg-config
-            ;;
+          arm-unknown-linux-*) sudo apt-get -y install gcc-arm-linux-gnueabihf ;;
+          aarch64-unknown-linux-gnu) sudo apt-get -y install gcc-aarch64-linux-gnu ;;
         esac
 
     - name: Install Rust toolchain

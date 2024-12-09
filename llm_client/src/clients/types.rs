@@ -345,15 +345,21 @@ impl LLMClientMessageTool {
 #[derive(serde::Serialize, Debug, Clone)]
 pub struct LLMClientToolReturn {
     tool_use_id: String,
+    tool_name: String,
     content: String,
 }
 
 impl LLMClientToolReturn {
-    pub fn new(tool_use_id: String, content: String) -> Self {
+    pub fn new(tool_use_id: String, tool_name: String, content: String) -> Self {
         Self {
             tool_use_id,
+            tool_name,
             content,
         }
+    }
+
+    pub fn tool_name(&self) -> &str {
+        &self.tool_name
     }
 
     pub fn tool_use_id(&self) -> &str {

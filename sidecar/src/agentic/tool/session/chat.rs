@@ -53,19 +53,25 @@ pub struct SessionChatToolUse {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SessionChatToolReturn {
     tool_use_id: String,
+    tool_name: String,
     content: String,
 }
 
 impl SessionChatToolReturn {
-    pub fn new(tool_use_id: String, content: String) -> Self {
+    pub fn new(tool_use_id: String, tool_name: String, content: String) -> Self {
         Self {
             tool_use_id,
+            tool_name,
             content,
         }
     }
 
     pub fn to_llm_tool_return(&self) -> LLMClientToolReturn {
-        LLMClientToolReturn::new(self.tool_use_id.to_owned(), self.content.to_owned())
+        LLMClientToolReturn::new(
+            self.tool_use_id.to_owned(),
+            self.tool_name.to_owned(),
+            self.content.to_owned(),
+        )
     }
 }
 
@@ -201,6 +207,7 @@ impl SessionChatMessage {
             .map(|tool_return_value| {
                 SessionChatToolReturn::new(
                     tool_return_value.tool_use_id().to_owned(),
+                    tool_return_value.tool_name().to_owned(),
                     tool_return_value.content().to_owned(),
                 )
             })

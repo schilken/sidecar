@@ -1,5 +1,8 @@
+use std::collections::HashMap;
+
 use crate::provider::{LLMProvider, LLMProviderAPIKeys};
 use futures::StreamExt;
+use tokio::sync::mpsc::UnboundedSender;
 
 use super::types::{
     LLMClient, LLMClientCompletionRequest, LLMClientCompletionResponse,
@@ -185,6 +188,78 @@ impl OpenRouterClient {
             LLMProviderAPIKeys::OpenRouter(open_router) => Ok(open_router.api_key),
             _ => Err(LLMClientError::WrongAPIKeyType),
         }
+    }
+
+    pub async fn stream_completion_with_tool(
+        &self,
+        api_key: LLMProviderAPIKeys,
+        request: LLMClientCompletionRequest,
+        metadata: HashMap<String, String>,
+        sender: UnboundedSender<LLMClientCompletionResponse>,
+    ) -> Result<(String, Vec<(String, (String, String))>), LLMClientError> {
+        let base_url = "https://openrouter.ai/api/v1/chat/completions".to_owned();
+        // pick this up from here, we need return type for the output we are getting form the stream
+        let model = self
+            .model(request.model())
+            .ok_or(LLMClientError::WrongAPIKeyType)?;
+        let auth_key = self.generate_auth_key(api_key)?;
+        let request = OpenRouterRequest::from_chat_request(request, model.to_owned());
+        println!("{:?}", serde_json::to_string(&request));
+        let mut response_stream = dbg!(
+            self.client
+                .post(base_url)
+                .bearer_auth(auth_key)
+                .header("HTTP-Referer", "https://aide.dev/")
+                .header("X-Title", "aide")
+                .json(&request)
+                .send()
+                .await
+        )?
+        .bytes_stream()
+        .eventsource();
+        let mut buffered_stream = "".to_owned();
+        // controls which tool we will be using if any
+        let mut tool_use_indication: Vec<(String, (String, String))> = vec![];
+
+        // handle all the tool parameters that are coming
+        // we will use a global tracker over here
+        // format to support: https://gist.github.com/theskcd/4d5b0f1a859be812bffbb0548e733233
+        // let mut curernt_tool_use: Option<String> = None;
+        // let current_tool_use_ref = &mut curernt_tool_use;
+        // let mut current_tool_use_id: Option<String> = None;
+        // let current_tool_use_id_ref = &current_tool_use_id;
+        // let mut running_tool_input = "".to_owned();
+        // let running_tool_input_ref = &mut running_tool_input;
+
+        while let Some(event) = response_stream.next().await {
+            match event {
+                Ok(event) => {
+                    if &event.data == "[DONE]" {
+                        continue;
+                    }
+                    let value = serde_json::from_str::<OpenRouterResponse>(&event.data)?;
+                    let first_choice = &value.choices[0];
+                    if let Some(content) = first_choice.delta.content.as_ref() {
+                        buffered_stream = buffered_stream + &content;
+                        sender.send(LLMClientCompletionResponse::new(
+                            buffered_stream.to_owned(),
+                            Some(content.to_owned()),
+                            value.model,
+                        ))?;
+                    }
+                    // if let Some(tool_calls) = first_choice.delta.tool_calls.as_ref() {
+                    //     tool_calls.into_iter().for_each(|tool_call| {
+                    //         let tool_call_index = tool_call.index;
+                    //         // let tool_call_
+                    //     })
+                    // }
+                }
+                Err(e) => {
+                    dbg!(e);
+                }
+            }
+        }
+        Ok((buffered_stream, vec![]))
     }
 }
 

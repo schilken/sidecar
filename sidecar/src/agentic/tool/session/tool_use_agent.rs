@@ -950,6 +950,15 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                 previous_message.is_cache_point();
             }
         });
+        // also add a cache point to the second last message over here
+        if let Some(second_last_message) = previous_messages
+            .iter_mut()
+            .rev()
+            .skip(1)
+            .find(|msg| msg.is_human_message())
+        {
+            second_last_message.is_cache_point();
+        }
         if previous_messages
             .last()
             .map(|last_message| last_message.is_human_message())

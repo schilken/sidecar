@@ -1104,7 +1104,7 @@ impl Session {
 
         // decay the content of the messages depending on the decay condition
         // so we can keep the context smaller and more relevant
-        converted_messages = self.decay_messages(self.exchanges.as_slice(), converted_messages);
+        // converted_messages = self.decay_messages(self.exchanges.as_slice(), converted_messages);
 
         // grab the terminal output if anything is present and pass it as part of the
         // agent input

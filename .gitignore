@@ -51,8 +51,14 @@ Temporary Items
 
 # Repomap .txt
 repomaps/**/*.txt
-
 traces/**/*.md
+
+# Aider stuff
+.aider*
+.env
+
+# Secrets
+.secrets
 
 # MCTS logs
 mcts_logs/

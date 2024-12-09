@@ -2,6 +2,8 @@ cargo build --bin webserver --release
 
 pathsToZip="target/release/webserver.exe"
 
+# ❓ how does zip and non-zip compare for windows?
+
 # Destination of the zip file
 zipFileDestination="sidecar.zip"
 

@@ -1,0 +1,150 @@
+name: Build & release sidecar
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_NET_RETRY: 10
+  VERSIONS_REPOSITORY: ${{ github.repository_owner }}/versions
+
+jobs:
+  build:
+    name: ${{ matrix.job.name }}
+    runs-on: ${{ matrix.job.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { target: aarch64-unknown-linux-gnu  , os: ubuntu-20.04, use-cross: true, name: linux-arm64 }
+          - { target: arm-unknown-linux-gnueabihf, os: ubuntu-20.04, use-cross: true, name: linux-armhf }
+          - { target: riscv64-unknown-linux-gnu  , os: ubuntu-20.04, use-cross: true, name: linux-riscv64 }
+          - { target: x86_64-unknown-linux-gnu   , os: ubuntu-20.04, use-cross: true, name: linux-x64 }
+          - { target: x86_64-pc-windows-msvc     , os: windows-2019, name: win32-x64 }
+          - { target: aarch64-pc-windows-msvc    , os: windows-2019, name: win32-arm64 }
+          - { target: x86_64-apple-darwin        , os: macos-13, name: darwin-x64 }
+          - { target: aarch64-apple-darwin       , os: macos-14, name: darwin-arm64 }
+
+    env:
+      BUILD_CMD: cargo
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Extract OS and arch from matrix name
+      shell: bash
+      run: |
+        OS=$(echo "${{ matrix.job.name }}" | cut -d'-' -f1)
+        ARCH=$(echo "${{ matrix.job.name }}" | cut -d'-' -f2)
+
+        echo "OS_NAME=${OS}" >> $GITHUB_ENV
+        echo "ARCH=${ARCH}" >> $GITHUB_ENV
+
+    - name: Install prerequisites
+      shell: bash
+      run: |
+        case ${{ matrix.job.target }} in
+          arm-unknown-linux-*) sudo apt-get -y update ; sudo apt-get -y install gcc-arm-linux-gnueabihf ;;
+          aarch64-unknown-linux-gnu) sudo apt-get -y update ; sudo apt-get -y install gcc-aarch64-linux-gnu ;;
+        esac
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.job.target }}
+
+    - name: Install cross
+      if: matrix.job.use-cross
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
+
+    - name: Overwrite build command env variable
+      if: matrix.job.use-cross
+      shell: bash
+      run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
+
+    - name: Build
+      shell: bash
+      run: $BUILD_CMD build --locked --release --target=${{ matrix.job.target }}
+
+    - name: Set binary name & path
+      id: bin
+      shell: bash
+      run: |
+        # Figure out suffix of binary
+        EXE_suffix=""
+        case ${{ matrix.job.target }} in
+          *-pc-windows-*) EXE_suffix=".exe" ;;
+        esac;
+
+        # Setup paths
+        BIN_NAME="webserver${EXE_suffix}"
+        BIN_PATH="target/${{ matrix.job.target }}/release/${BIN_NAME}"
+
+        # Let subsequent steps know where to find the binary
+        echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_OUTPUT
+        echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_OUTPUT
+
+    - name: Create zip file
+      shell: pwsh
+      run: |
+        # Create a staging directory structure
+        New-Item -ItemType Directory -Force -Path staging/target/release
+
+        # Copy binary to staging directory with correct name
+        if ($env:RUNNER_OS -eq "Windows") {
+          Copy-Item "${{ steps.bin.outputs.BIN_PATH }}" "staging/target/release/webserver.exe"
+        } else {
+          Copy-Item "${{ steps.bin.outputs.BIN_PATH }}" "staging/target/release/webserver"
+        }
+
+        # Create zip file
+        Push-Location staging
+        if ($env:RUNNER_OS -eq "Windows") {
+          Compress-Archive -Path * -DestinationPath ../sidecar.zip -Force
+        } else {
+          zip -r ../sidecar.zip .
+        }
+        Pop-Location
+
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v2'
+      with:
+        credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
+
+    - name: 'Set up Cloud SDK'
+      uses: 'google-github-actions/setup-gcloud@v2'
+      with:
+        project_id: "${{ secrets.GCP_PROJECT_ID }}"
+
+    - name: Release a new version
+      env:
+        OS_NAME: ${{ env.OS_NAME }}
+        ARCH: ${{ env.ARCH }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_USERNAME: ${{ github.repository_owner }}
+        FORCE_UPDATE: ${{ github.event.inputs.force_version }}
+      run: |
+        ./update_version.sh
+
+    - name: Upload zip file to GCP
+      env:
+        OS_NAME: ${{ env.OS_NAME }}
+        ARCH: ${{ env.ARCH }}
+        GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
+        GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      run: |
+        # Decode the GCP_SA_KEY secret and write the contents to a temporary file
+        echo "$GCP_SA_KEY" | base64 --decode > gcp_sa_key.json
+        # Authenticate to gcloud with the service account key
+        gcloud auth activate-service-account --key-file=gcp_sa_key.json
+        # Set your GCP project
+        gcloud config set project $GCP_PROJECT_ID
+        # Copy the built binary to version-specific folder in GCP bucket
+        gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS_NAME/$ARCH/sidecar.zip"
+        # Also update the latest version
+        gsutil cp sidecar.zip "gs://sidecar-bin/latest/$OS_NAME/$ARCH/sidecar.zip"
+        # Remove the service account key file
+        rm gcp_sa_key.json

@@ -23,6 +23,7 @@ pub(super) struct ReachTheDevsResponse {
 #[derive(Serialize, Debug)]
 pub(super) struct VersionResponse {
     version_hash: String,
+    package_version: String,
 }
 
 impl ApiResponse for ConfigResponse {}
@@ -40,6 +41,7 @@ pub async fn get(State(_app): State<Application>) -> impl IntoResponse {
 pub async fn version(State(_): State<Application>) -> impl IntoResponse {
     json(VersionResponse {
         version_hash: BINARY_VERSION_HASH.to_owned(),
+        package_version: env!("CARGO_PKG_VERSION").to_owned(),
     })
 }
 

@@ -43,9 +43,29 @@ impl OpenRouterRequestMessageType {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OpenRouterRequestMessageToolUse {
+    schema: serde_json::Value,
+}
+
+impl OpenRouterRequestMessageToolUse {
+    pub fn from_llm_tool_use(mut llm_tool: serde_json::Value) -> serde_json::Value {
+        if let Some(obj) = llm_tool.as_object_mut() {
+            // If "input_schema" exists, remove it and reinsert it as "parameters".
+            // this is since the tool format is set to what anthropic preferes
+            if let Some(input_schema) = obj.remove("input_schema") {
+                obj.insert("parameters".to_string(), input_schema);
+            }
+        }
+
+        llm_tool
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OpenRouterRequestMessage {
     role: String,
     content: Vec<OpenRouterRequestMessageType>,
+    tools: Vec<OpenRouterRequestMessageToolUse>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -57,9 +77,42 @@ pub struct OpenRouterRequest {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ToolFunction {
+    name: Option<String>,
+    arguments: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct FunctionCall {
+    name: Option<String>,
+    arguments: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct ToolCall {
+    index: i32,
+    id: Option<String>,
+
+    #[serde(rename = "type")]
+    call_type: Option<String>,
+
+    #[serde(rename = "function")]
+    function_details: Option<ToolFunction>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct OpenRouterResponseDelta {
-    role: String,
-    content: String,
+    #[serde(rename = "role")]
+    role: Option<String>,
+
+    #[serde(rename = "content")]
+    content: Option<String>,
+
+    #[serde(rename = "function_call")]
+    function_call: Option<FunctionCall>,
+
+    #[serde(rename = "tool_calls")]
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -95,6 +148,7 @@ impl OpenRouterRequest {
                             )
                             .collect()
                     },
+                    tools: vec![],
                 })
                 .collect(),
             stream: true,
@@ -174,12 +228,15 @@ impl LLMClient for OpenRouterClient {
                         continue;
                     }
                     let value = serde_json::from_str::<OpenRouterResponse>(&event.data)?;
-                    buffered_stream = buffered_stream + &value.choices[0].delta.content;
-                    sender.send(LLMClientCompletionResponse::new(
-                        buffered_stream.to_owned(),
-                        Some(value.choices[0].delta.content.to_owned()),
-                        value.model,
-                    ))?;
+                    let first_choice = &value.choices[0];
+                    if let Some(content) = first_choice.delta.content.as_ref() {
+                        buffered_stream = buffered_stream + &content;
+                        sender.send(LLMClientCompletionResponse::new(
+                            buffered_stream.to_owned(),
+                            Some(content.to_owned()),
+                            value.model,
+                        ))?;
+                    }
                 }
                 Err(e) => {
                     dbg!(e);

@@ -121,6 +121,7 @@ struct OpenRouterResponseDelta {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct OpenRouterResponseChoice {
     delta: OpenRouterResponseDelta,
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -194,7 +195,7 @@ impl OpenRouterClient {
         &self,
         api_key: LLMProviderAPIKeys,
         request: LLMClientCompletionRequest,
-        metadata: HashMap<String, String>,
+        _metadata: HashMap<String, String>,
         sender: UnboundedSender<LLMClientCompletionResponse>,
     ) -> Result<(String, Vec<(String, (String, String))>), LLMClientError> {
         let base_url = "https://openrouter.ai/api/v1/chat/completions".to_owned();
@@ -224,12 +225,12 @@ impl OpenRouterClient {
         // handle all the tool parameters that are coming
         // we will use a global tracker over here
         // format to support: https://gist.github.com/theskcd/4d5b0f1a859be812bffbb0548e733233
-        // let mut curernt_tool_use: Option<String> = None;
-        // let current_tool_use_ref = &mut curernt_tool_use;
-        // let mut current_tool_use_id: Option<String> = None;
-        // let current_tool_use_id_ref = &current_tool_use_id;
-        // let mut running_tool_input = "".to_owned();
-        // let running_tool_input_ref = &mut running_tool_input;
+        let mut curernt_tool_use: Option<String> = None;
+        let current_tool_use_ref = &mut curernt_tool_use;
+        let mut current_tool_use_id: Option<String> = None;
+        let current_tool_use_id_ref = &mut current_tool_use_id;
+        let mut running_tool_input = "".to_owned();
+        let running_tool_input_ref = &mut running_tool_input;
 
         while let Some(event) = response_stream.next().await {
             match event {
@@ -247,19 +248,51 @@ impl OpenRouterClient {
                             value.model,
                         ))?;
                     }
-                    // if let Some(tool_calls) = first_choice.delta.tool_calls.as_ref() {
-                    //     tool_calls.into_iter().for_each(|tool_call| {
-                    //         let tool_call_index = tool_call.index;
-                    //         // let tool_call_
-                    //     })
-                    // }
+
+                    if let Some(finish_reason) = first_choice.finish_reason.as_ref() {
+                        if finish_reason == "tool_use" {
+                            if let (Some(current_tool_use), Some(current_tool_use_id)) = (
+                                current_tool_use_ref.clone(),
+                                current_tool_use_id_ref.clone(),
+                            ) {
+                                tool_use_indication.push((
+                                    current_tool_use.to_owned(),
+                                    (
+                                        current_tool_use_id.to_owned(),
+                                        running_tool_input_ref.to_owned(),
+                                    ),
+                                ));
+                            }
+                            // now empty the tool use tracked
+                            *current_tool_use_ref = None;
+                            *running_tool_input_ref = "".to_owned();
+                            *current_tool_use_id_ref = None;
+                        }
+                    }
+                    if let Some(tool_calls) = first_choice.delta.tool_calls.as_ref() {
+                        tool_calls.into_iter().for_each(|tool_call| {
+                            let _tool_call_index = tool_call.index;
+                            if let Some(function_details) = tool_call.function_details.as_ref() {
+                                if let Some(tool_id) = tool_call.id.clone() {
+                                    *current_tool_use_id_ref = Some(tool_id.to_owned());
+                                }
+                                if let Some(name) = function_details.name.clone() {
+                                    *current_tool_use_ref = Some(name.to_owned());
+                                }
+                                if let Some(arguments) = function_details.arguments.clone() {
+                                    *running_tool_input_ref =
+                                        running_tool_input_ref.to_owned() + &arguments;
+                                }
+                            }
+                        })
+                    }
                 }
                 Err(e) => {
                     dbg!(e);
                 }
             }
         }
-        Ok((buffered_stream, vec![]))
+        Ok((buffered_stream, tool_use_indication))
     }
 }
 

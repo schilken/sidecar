@@ -34,7 +34,11 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        python-version: '3.11'
+
+    - name: Point gcloud SDK to Python
+      shell: bash
+      run: echo "CLOUDSDK_PYTHON=$(which python)" >> $GITHUB_ENV
 
     - name: Extract build target information
       shell: bash
@@ -72,6 +76,12 @@ jobs:
       if: matrix.job.use-cross
       shell: bash
       run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
+
+    - name: Install GNU toolchain for aarch64-pc-windows-msvc
+      if: matrix.job.target == 'aarch64-pc-windows-msvc'
+      shell: bash
+      run: |
+        rustup toolchain install stable-gnu
 
     - uses: Swatinem/rust-cache@v2
       with:

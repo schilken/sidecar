@@ -62,7 +62,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.79.0
+        toolchain: ${{ matrix.job.os == 'windows-2019' && 'stable-x86_64-pc-windows-gnu' || 'stable' }}
         targets: ${{ matrix.job.target }}
         components: rust-src, rust-std
 
@@ -76,12 +76,6 @@ jobs:
       if: matrix.job.use-cross
       shell: bash
       run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
-
-    - name: Install GNU toolchain for aarch64-pc-windows-msvc
-      if: matrix.job.target == 'aarch64-pc-windows-msvc'
-      shell: bash
-      run: |
-        rustup toolchain install stable-gnu
 
     - uses: Swatinem/rust-cache@v2
       with:

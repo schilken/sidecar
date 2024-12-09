@@ -18,7 +18,7 @@ jobs:
         job:
           - { target: aarch64-unknown-linux-gnu  , os: ubuntu-20.04, use-cross: true, name: linux-arm64 }
           - { target: arm-unknown-linux-gnueabihf, os: ubuntu-20.04, use-cross: true, name: linux-armhf }
-          - { target: riscv64-unknown-linux-gnu  , os: ubuntu-20.04, use-cross: true, name: linux-riscv64 }
+          - { target: riscv64gc-unknown-linux-gnu, os: ubuntu-20.04, use-cross: true, name: linux-riscv64 }
           - { target: x86_64-unknown-linux-gnu   , os: ubuntu-20.04, use-cross: true, name: linux-x64 }
           - { target: x86_64-pc-windows-msvc     , os: windows-2019, name: win32-x64 }
           - { target: aarch64-pc-windows-msvc    , os: windows-2019, name: win32-arm64 }
@@ -53,14 +53,6 @@ jobs:
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
-      if: matrix.job.target != 'riscv64-unknown-linux-gnu'
-      with:
-        targets: ${{ matrix.job.target }}
-        components: rust-src, rust-std
-
-    - name: Install Rust nightly toolchain for RISC-V
-      uses: dtolnay/rust-toolchain@nightly
-      if: matrix.job.target == 'riscv64-unknown-linux-gnu'
       with:
         targets: ${{ matrix.job.target }}
         components: rust-src, rust-std

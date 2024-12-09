@@ -110,19 +110,20 @@ impl RewardGeneration {
                 ))
             }
             Some(ActionToolParameters::Tool(tool_input_partial)) => {
+                let tool_input_partial = tool_input_partial.tool_input_partial();
                 let tool_type = tool_input_partial.to_tool_type();
                 match tool_type {
                     ToolType::AttemptCompletion => tool_input_partial.to_string(),
                     _ => {
                         format!(
                             r#"## Last Executed Action:
-        Here is the most recent action that was executed and its output. This is the subject of your evaluation.
-        <executed_action>
-        {}
-        </executed_action>
-        
-        ## Output:
-        {}"#,
+Here is the most recent action that was executed and its output. This is the subject of your evaluation.
+<executed_action>
+{}
+</executed_action>
+
+## Output:
+{}"#,
                             tool_input_partial.to_string(),
                             leaf.observation()
                                 .map(|observation| observation.message().to_owned())

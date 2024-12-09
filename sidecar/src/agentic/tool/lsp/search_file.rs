@@ -160,7 +160,10 @@ impl SearchFileContentInputPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<search_files>
+            r#"<thinking>
+...
+</thinking>
+<search_files>
 <directory_path>
 {}
 </directory_path>
@@ -177,6 +180,31 @@ impl SearchFileContentInputPartial {
                 .clone()
                 .unwrap_or("not provided".to_owned())
         )
+    }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "search_files",
+            "description": "Request to perform a regex search across files in a specified directory, providing context-rich results.\nThis tool searches for patterns or specific content across multiple files, displaying each match with encapsulating context.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "directory_path": {
+                        "type": "string",
+                        "description": "(required) The absolute path of the directory to search in. This directory will be recursively searched.",
+                    },
+                    "regex_pattern": {
+                        "type": "string",
+                        "description": "(required) The regular expression pattern to search for. Uses Rust regex syntax.",
+                    },
+                    "file_pattern": {
+                        "type": "string",
+                        "description": "(optional) Glob pattern to filter files (e.g., '*.ts' for TypeScript files). If not provided, it will search all files (*).",
+                    },
+                },
+                "required": ["directory_path", "regex_pattern"],
+            },
+        })
     }
 }
 
@@ -243,12 +271,16 @@ impl Tool for SearchFileContentClient {
         let file_pattern = &context.file_pattern.unwrap_or("*".to_owned());
         let args = vec![
             "--json",
+            // enables lookaround
+            "--pcre2",
             "-e",
             regex_pattern,
             "--glob",
             file_pattern,
             "--context",
             "1",
+            // add multiline support for regex
+            "--multiline",
             &context.directory_path,
         ];
 

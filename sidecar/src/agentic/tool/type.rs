@@ -148,6 +148,8 @@ pub enum ToolType {
     RewardGeneration,
     // Feedback generation
     FeedbackGeneration,
+    // Code editor tool (this is special for anthropic)
+    CodeEditorTool,
 }
 
 impl std::fmt::Display for ToolType {
@@ -247,6 +249,7 @@ impl std::fmt::Display for ToolType {
             ToolType::TestRunner => write!(f, "test_runner"),
             ToolType::RewardGeneration => write!(f, "reward_generation"),
             ToolType::FeedbackGeneration => write!(f, "feedback_generation"),
+            ToolType::CodeEditorTool => write!(f, "str_replace_editor"),
         }
     }
 }

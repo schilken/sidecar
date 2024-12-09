@@ -28,7 +28,10 @@ impl RepoMapGeneratorRequestPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<repo_map_generation>
+            r#"<thinking>
+...
+</thinking>
+<repo_map_generation>
 <directory_path>
 {}
 </directory_path>

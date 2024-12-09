@@ -26,13 +26,35 @@ impl OpenFileRequestPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<read_file>
+            r#"<thinking>
+...
+</thinking>
+<read_file>
 <fs_file_path>
 {}
 </fs_file_path>
 </read_file>"#,
             &self.fs_file_path
         )
+    }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "read_file",
+            "description": r#"Request to read the full contents of a file at the specified path.
+Use this when you need to examine the full content of an existing file you do not know the contents of, for example to analyze code, review text files, or extract information from configuration files.
+May not be suitable for other types of binary files, as it returns the raw content as a string"#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "fs_file_path": {
+                        "type": "string",
+                        "description": "(required) The relative path of the file to read.",
+                    },
+                },
+                "required": ["fs_file_path"],
+            },
+        })
     }
 }
 

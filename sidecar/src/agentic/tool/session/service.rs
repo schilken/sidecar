@@ -74,13 +74,14 @@ impl SessionService {
         repo_ref: RepoRef,
         storage_path: String,
         tools: Vec<ToolType>,
+        user_context: UserContext,
     ) -> Session {
         Session::new(
             session_id.to_owned(),
             project_labels,
             repo_ref,
             storage_path,
-            UserContext::default(),
+            user_context,
             tools,
         )
     }
@@ -388,6 +389,7 @@ impl SessionService {
                     ToolType::RepoMapGeneration,
                     ToolType::TestRunner,
                 ],
+                UserContext::default(),
             )
         };
 
@@ -409,6 +411,7 @@ impl SessionService {
             all_files,
             open_files,
             shell,
+            UserContext::default(),
         );
         println!("session_service::test_agent::save_to_storage");
         let _ = self.save_to_storage(&session).await;
@@ -561,6 +564,7 @@ impl SessionService {
                     // ToolType::TerminalCommand,
                     ToolType::TestRunner, // turning this on, but with truncation of output
                 ],
+                UserContext::default(),
             )
         };
 
@@ -582,6 +586,7 @@ impl SessionService {
             all_files,
             open_files,
             shell,
+            UserContext::default(),
         );
         println!("session_service::session_human_message_tool_use");
         let _ = self.save_to_storage(&session).await;
@@ -696,6 +701,7 @@ impl SessionService {
         root_directory: String,
         tool_box: Arc<ToolBox>,
         llm_broker: Arc<LLMBroker>,
+        user_context: UserContext,
         mut message_properties: SymbolEventMessageProperties,
     ) -> Result<(), SymbolError> {
         println!("session_service::tool_use_agentic::start");
@@ -724,6 +730,7 @@ impl SessionService {
                     ToolType::RepoMapGeneration,
                     ToolType::TerminalCommand,
                 ],
+                UserContext::default(),
             )
         };
 
@@ -745,6 +752,7 @@ impl SessionService {
             all_files,
             open_files,
             shell,
+            user_context,
         );
         let _ = self.save_to_storage(&session).await;
 

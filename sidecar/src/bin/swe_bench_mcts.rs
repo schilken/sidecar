@@ -21,7 +21,10 @@ use sidecar::{
     },
     chunking::{editor_parsing::EditorParsing, languages::TSLanguageParsing},
     inline_completion::symbols_tracker::SymbolTrackerInline,
-    mcts::{action_node::SearchTree, selector::selector::Selector},
+    mcts::{
+        action_node::SearchTree, agent_settings::settings::AgentSettings,
+        selector::selector::Selector,
+    },
 };
 use std::{path::PathBuf, sync::Arc};
 
@@ -51,6 +54,22 @@ struct CliArgs {
 
     #[arg(long)]
     repo_name: String,
+
+    /// Directory to dump all the logs into
+    #[arg(long)]
+    log_directory: String,
+
+    /// Use json mode strictly
+    #[arg(long, default_value = "true")]
+    json_mode: bool,
+
+    /// Use midwit mode (aka sonnet3.5 with tool)
+    #[arg(long, default_value = "true")]
+    midwit_mode: bool,
+
+    /// Run in single trajectory but a lot of them
+    #[arg(long, default_value = None)]
+    single_traj_search: Option<usize>,
 }
 
 /// Define the SWEbenchInstance struct for serialization
@@ -110,8 +129,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
     ));
 
-    let symbol_tracker = Arc::new(SymbolTrackerInline::new(editor_parsing.clone()));
-
     let tool_box = Arc::new(ToolBox::new(tool_broker, symbol_broker, editor_parsing));
 
     let editor_url = args.editor_url.to_owned();
@@ -120,6 +137,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let run_id = args.run_id.to_owned();
     let repo_name = args.repo_name.to_owned();
     let anthropic_api_key = args.anthropic_api_key.to_owned();
+    let log_directory = args.log_directory.to_owned();
     let input_content = tokio::fs::read(input_path).await.expect("path content");
     let input_parts: InputParts =
         serde_json::from_slice(&input_content).expect("Parse the serde json");
@@ -138,20 +156,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("session_id:{}", &session_id);
 
-    // Creates the unique path for the session
-    let session_path = default_index_dir().join("session");
-    // check if the plan_storage_path_exists
-    if tokio::fs::metadata(&session_path).await.is_err() {
-        tokio::fs::create_dir(&session_path)
-            .await
-            .expect("directory creation to not fail");
-    }
-    let session_path = session_path.join(session_id.to_owned());
-    let storage_path = session_path
-        .to_str()
-        .expect("path conversion to work on all platforms")
-        .to_owned();
-
     let initial_exchange_id = 0;
 
     let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -167,50 +171,85 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model_configuration,
     );
 
+    let agent_settings = AgentSettings::new(args.json_mode, args.midwit_mode);
+
+    // The bad actions which hurt the check_for_bad_children_actions
+    let bad_actions = if agent_settings.is_json() {
+        vec![ToolType::CodeEditorTool]
+    } else {
+        vec![ToolType::CodeEditing]
+    };
+
+    let mut tools = vec![
+        ToolType::ListFiles,
+        ToolType::SearchFileContentWithRegex,
+        // if we are in json mode then select the code editor tool
+        if args.json_mode {
+            ToolType::CodeEditorTool
+        } else {
+            ToolType::CodeEditing
+        },
+        ToolType::AttemptCompletion,
+        ToolType::TerminalCommand,
+    ];
+
+    if !args.midwit_mode {
+        tools.push(ToolType::TestRunner);
+    }
+
+    // add the open file only if we are not in the json mode
+    // if !args.json_mode {
+    //     tools.push(ToolType::OpenFile);
+    // }
+    tools.push(ToolType::OpenFile);
+
     let selector = Selector::new(
-        1.0,                         // exploitation_weight
-        false,                       // use_average_reward
-        1.0,                         // exploration_weight
-        0.8,                         // depth_weight
-        0.0,                         // depth_bonus_factor
-        50.0,                        // high_value_threshold
-        0.0,                         // low_value_threshold
-        75.0,                        // very_high_value_threshold
-        50.0,                        // high_value_leaf_bonus_constant
-        20.0,                        // high_value_bad_children_bonus_constant
-        5.0,                         // high_value_child_penalty_constant
-        50.0,                        // finished_trajectory_penalty
-        50.0,                        // expect_correction_bonus
-        vec![ToolType::CodeEditing], // check_for_bad_child_actions
-        100.0,                       // diversity_weight
-        25.0,                        // duplicate_child_penalty_constant
-        50.0,                        // duplicate_action_penalty_constant
+        1.0,         // exploitation_weight
+        false,       // use_average_reward
+        1.0,         // exploration_weight
+        0.8,         // depth_weight
+        0.0,         // depth_bonus_factor
+        50.0,        // high_value_threshold
+        0.0,         // low_value_threshold
+        75.0,        // very_high_value_threshold
+        50.0,        // high_value_leaf_bonus_constant
+        20.0,        // high_value_bad_children_bonus_constant
+        5.0,         // high_value_child_penalty_constant
+        50.0,        // finished_trajectory_penalty
+        50.0,        // expect_correction_bonus
+        bad_actions, // check_for_bad_child_actions
+        100.0,       // diversity_weight
+        25.0,        // duplicate_child_penalty_constant
+        50.0,        // duplicate_action_penalty_constant
     );
+
+    // how many children the node can have?
+    let expansions = if args.single_traj_search.is_some() {
+        // if we are doing single traj then only allow for a single node expansion
+        1
+    } else {
+        2
+    };
 
     // Instantiate the mcts tree over here and start the search
     let mut search_tree = SearchTree::new(
-        3,                                      // max_expansions
-        20,                                     // max_depth of the tree
-        100,                                    // max_iterations
-        Some(3),                                // max_finished_nodes
-        None,                                   // reward_threshold
-        Some(2),                                // min_finished_nodes
-        input_parts.git_drname.to_owned(),      // root_directory
-        repo_name,                              // repo_name
-        input_parts.instance.problem_statement, // problem_statment
-        selector,                               // selector
-        vec![
-            ToolType::ListFiles,
-            ToolType::SearchFileContentWithRegex,
-            ToolType::OpenFile,
-            ToolType::CodeEditing,
-            ToolType::AttemptCompletion,
-            ToolType::RepoMapGeneration,
-            ToolType::TerminalCommand,
-            ToolType::TestRunner,
-        ], // tools
-        tool_box,                               // tool_box
-        llm_broker,                             // llm_client
+        expansions,                                  // max_expansions
+        40,                                          // max_depth of the tree
+        400,                                         // max_iterations
+        Some(5),                                     // max_finished_nodes
+        None,                                        // reward_threshold
+        Some(2),                                     // min_finished_nodes
+        args.single_traj_search,                     // max_search_try
+        input_parts.git_drname.to_owned(),           // root_directory
+        repo_name,                                   // repo_name
+        input_parts.instance.base_commit.to_owned(), // base_commit
+        input_parts.instance.problem_statement,      // problem_statment
+        selector,                                    // selector
+        tools,                                       // tools
+        tool_box,                                    // tool_box
+        llm_broker,                                  // llm_client
+        log_directory,                               // log directory
+        agent_settings,                              // agent_settings
     );
 
     // Run the search

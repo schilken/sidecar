@@ -1,5 +1,6 @@
 use super::{
     code_edit::{
+        code_editor::CodeEditorParameters,
         filter_edit::FilterEditOperationRequest,
         find::FindCodeSelectionInput,
         search_and_replace::SearchAndReplaceEditingRequest,
@@ -75,7 +76,7 @@ use super::{
     },
     swe_bench::test_tool::SWEBenchTestRequest,
     terminal::terminal::{TerminalInput, TerminalInputPartial},
-    test_runner::runner::TestRunnerRequest,
+    test_runner::runner::{TestRunnerRequest, TestRunnerRequestPartial},
 };
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -89,7 +90,8 @@ pub enum ToolInputPartial {
     AskFollowupQuestions(AskFollowupQuestionsRequest),
     AttemptCompletion(AttemptCompletionClientRequest),
     RepoMapGeneration(RepoMapGeneratorRequestPartial),
-    TestRunner(Vec<String>),
+    TestRunner(TestRunnerRequestPartial),
+    CodeEditorParameters(CodeEditorParameters),
 }
 
 impl ToolInputPartial {
@@ -105,6 +107,7 @@ impl ToolInputPartial {
             Self::AttemptCompletion(_) => ToolType::AttemptCompletion,
             Self::RepoMapGeneration(_) => ToolType::RepoMapGeneration,
             Self::TestRunner(_) => ToolType::TestRunner,
+            Self::CodeEditorParameters(_) => ToolType::CodeEditorTool,
         }
     }
 
@@ -121,7 +124,55 @@ impl ToolInputPartial {
             Self::AskFollowupQuestions(ask_followup_question) => ask_followup_question.to_string(),
             Self::AttemptCompletion(attempt_completion) => attempt_completion.to_string(),
             Self::RepoMapGeneration(repo_map_generator) => repo_map_generator.to_string(),
-            Self::TestRunner(fs_file_paths) => fs_file_paths.join(", "),
+            Self::TestRunner(test_runner_partial_output) => test_runner_partial_output.to_string(),
+            Self::CodeEditorParameters(code_editor_parameters) => {
+                code_editor_parameters.to_string()
+            }
+        }
+    }
+
+    pub fn to_json_value(&self) -> Option<serde_json::Value> {
+        match self {
+            Self::CodeEditing(code_editing) => serde_json::to_value(&code_editing).ok(),
+            Self::ListFiles(list_files) => serde_json::to_value(&list_files).ok(),
+            Self::SearchFileContentWithRegex(search_file_content_with_regex) => {
+                serde_json::to_value(&search_file_content_with_regex).ok()
+            }
+            Self::OpenFile(open_file) => serde_json::to_value(&open_file).ok(),
+            Self::LSPDiagnostics(lsp_diagnostics) => serde_json::to_value(&lsp_diagnostics).ok(),
+            Self::TerminalCommand(terminal_command) => serde_json::to_value(&terminal_command).ok(),
+            Self::AskFollowupQuestions(ask_followup_question) => {
+                serde_json::to_value(&ask_followup_question).ok()
+            }
+            Self::AttemptCompletion(attempt_completion) => {
+                serde_json::to_value(&attempt_completion).ok()
+            }
+            Self::RepoMapGeneration(repo_map_generator) => {
+                serde_json::to_value(&repo_map_generator).ok()
+            }
+            Self::TestRunner(test_runner_partial_output) => {
+                serde_json::to_value(&test_runner_partial_output).ok()
+            }
+            Self::CodeEditorParameters(code_editor_parameters) => {
+                serde_json::to_value(&code_editor_parameters).ok()
+            }
+        }
+    }
+
+    pub fn to_json(tool_type: ToolType) -> Option<serde_json::Value> {
+        match tool_type {
+            ToolType::CodeEditing => None,
+            ToolType::ListFiles => Some(ListFilesInput::to_json()),
+            ToolType::SearchFileContentWithRegex => Some(SearchFileContentInputPartial::to_json()),
+            ToolType::OpenFile => Some(OpenFileRequestPartial::to_json()),
+            ToolType::LSPDiagnostics => None,
+            ToolType::TerminalCommand => Some(TerminalInputPartial::to_json()),
+            ToolType::AskFollowupQuestions => None,
+            ToolType::AttemptCompletion => Some(AttemptCompletionClientRequest::to_json()),
+            ToolType::RepoMapGeneration => None,
+            ToolType::TestRunner => Some(TestRunnerRequestPartial::to_json()),
+            ToolType::CodeEditorTool => Some(CodeEditorParameters::to_json()),
+            _ => None,
         }
     }
 }

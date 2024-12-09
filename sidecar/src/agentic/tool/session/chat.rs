@@ -23,7 +23,10 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use llm_client::{
     broker::LLMBroker,
-    clients::types::{LLMClientCompletionRequest, LLMClientMessage, LLMClientRole},
+    clients::types::{
+        LLMClientCompletionRequest, LLMClientMessage, LLMClientMessageImage, LLMClientRole,
+        LLMClientToolReturn, LLMClientToolUse,
+    },
 };
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -34,20 +37,113 @@ pub enum SessionChatRole {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionChatMessageImage {
+    r#type: String,
+    media_type: String,
+    data: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionChatToolUse {
+    name: String,
+    id: String,
+    schema: serde_json::Value,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionChatToolReturn {
+    tool_use_id: String,
+    content: String,
+}
+
+impl SessionChatToolReturn {
+    pub fn new(tool_use_id: String, content: String) -> Self {
+        Self {
+            tool_use_id,
+            content,
+        }
+    }
+
+    pub fn to_llm_tool_return(&self) -> LLMClientToolReturn {
+        LLMClientToolReturn::new(self.tool_use_id.to_owned(), self.content.to_owned())
+    }
+}
+
+impl SessionChatToolUse {
+    pub fn new(name: String, id: String, schema: serde_json::Value) -> Self {
+        Self { name, id, schema }
+    }
+
+    pub fn to_llm_tool_use(&self) -> LLMClientToolUse {
+        LLMClientToolUse::new(
+            self.name.to_owned(),
+            self.id.to_owned(),
+            self.schema.clone(),
+        )
+    }
+}
+
+impl SessionChatMessageImage {
+    pub fn new(r#type: String, media_type: String, data: String) -> Self {
+        Self {
+            r#type,
+            media_type,
+            data,
+        }
+    }
+
+    pub fn to_llm_image(&self) -> LLMClientMessageImage {
+        LLMClientMessageImage::new(
+            self.r#type.to_owned(),
+            self.media_type.to_owned(),
+            self.data.to_owned(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct SessionChatMessage {
     message: String,
+    images: Vec<SessionChatMessageImage>,
+    tool_use: Vec<SessionChatToolUse>,
+    tool_return: Vec<SessionChatToolReturn>,
     role: SessionChatRole,
 }
 
 impl SessionChatMessage {
-    pub fn new(role: SessionChatRole, message: String) -> Self {
-        Self { role, message }
+    pub fn new(
+        role: SessionChatRole,
+        message: String,
+        images: Vec<SessionChatMessageImage>,
+    ) -> Self {
+        Self {
+            role,
+            message,
+            images,
+            tool_use: vec![],
+            tool_return: vec![],
+        }
     }
 
-    pub fn assistant(message: String) -> Self {
+    pub fn images(&self) -> &[SessionChatMessageImage] {
+        self.images.as_slice()
+    }
+
+    pub fn tool_return(&self) -> &[SessionChatToolReturn] {
+        self.tool_return.as_slice()
+    }
+
+    pub fn tool_use(&self) -> &[SessionChatToolUse] {
+        self.tool_use.as_slice()
+    }
+
+    pub fn assistant(message: String, images: Vec<SessionChatMessageImage>) -> Self {
         Self {
             message,
+            tool_use: vec![],
+            tool_return: vec![],
             role: SessionChatRole::Assistant,
+            images,
         }
     }
 
@@ -55,10 +151,13 @@ impl SessionChatMessage {
         &self.message
     }
 
-    pub fn user(message: String) -> Self {
+    pub fn user(message: String, images: Vec<SessionChatMessageImage>) -> Self {
         Self {
             message,
+            tool_use: vec![],
+            tool_return: vec![],
             role: SessionChatRole::User,
+            images,
         }
     }
 
@@ -74,9 +173,44 @@ impl SessionChatMessage {
             &LLMClientRole::User => SessionChatRole::User,
             _ => SessionChatRole::User,
         };
+        let images = llm_message
+            .images()
+            .into_iter()
+            .map(|llm_image| {
+                SessionChatMessageImage::new(
+                    llm_image.data().to_owned(),
+                    llm_image.media().to_owned(),
+                    llm_image.data().to_owned(),
+                )
+            })
+            .collect();
+        let tool_use = llm_message
+            .tool_use_value()
+            .into_iter()
+            .map(|tool_use| {
+                SessionChatToolUse::new(
+                    tool_use.name().to_owned(),
+                    tool_use.id().to_owned(),
+                    tool_use.input().clone(),
+                )
+            })
+            .collect();
+        let tool_return = llm_message
+            .tool_return_value()
+            .into_iter()
+            .map(|tool_return_value| {
+                SessionChatToolReturn::new(
+                    tool_return_value.tool_use_id().to_owned(),
+                    tool_return_value.content().to_owned(),
+                )
+            })
+            .collect();
         Self {
             message: message.to_owned(),
             role,
+            images,
+            tool_use,
+            tool_return,
         }
     }
 }
@@ -333,7 +467,7 @@ impl Tool for SessionChatClient {
         "".to_owned()
     }
 
-    fn get_evaluation_criteria(&self, trajectory_length: usize) -> Vec<String> {
+    fn get_evaluation_criteria(&self, _trajectory_length: usize) -> Vec<String> {
         vec![]
     }
 

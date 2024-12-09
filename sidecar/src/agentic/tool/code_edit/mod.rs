@@ -1,3 +1,4 @@
+pub(crate) mod code_editor;
 pub(crate) mod filter_edit;
 pub(crate) mod find;
 pub mod models;

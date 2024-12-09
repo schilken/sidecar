@@ -194,7 +194,10 @@ impl ListFilesInput {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<list_files>
+            r#"<thinking>
+...
+</thinking>
+<list_files>
 <directory_path>
 {}
 </directory_path>
@@ -204,6 +207,30 @@ impl ListFilesInput {
 </list_files>"#,
             self.directory_path, self.recursive
         )
+    }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "list_files",
+            "description": r#"Request to list files and directories within the specified directory.
+If recursive is true, it will list all files and directories recursively.
+If recursive is false, it will only list the top-level contents.
+Do not use this tool to confirm the existence of files you may have created, as the user will let you know if the files were created successfully or not."#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "directory_path": {
+                        "type": "string",
+                        "description": "(required) The absolute path of the directory to list contents for."
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "(required) Whether to list files recursively. Use true for recursive listing, false for top-level only.",
+                    }
+                },
+                "required": ["directory_path", "recursive"],
+            },
+        })
     }
 }
 

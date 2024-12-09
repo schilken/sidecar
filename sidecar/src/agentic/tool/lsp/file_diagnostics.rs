@@ -32,7 +32,10 @@ impl WorkspaceDiagnosticsPartial {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<get_diagnostics>
+            r#"<thinking>
+...
+</thinking>
+<get_diagnostics>
 <fs_file_path>
 {{full workspace}}
 </fs_file_path>

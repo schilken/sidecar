@@ -295,20 +295,155 @@ impl LLMClientMessageFunctionReturn {
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientMessageTool {
+    name: String,
+    description: String,
+    r#type: Option<String>,
+    input_schema: Option<serde_json::Value>,
+    required: Vec<String>,
+}
+
+impl LLMClientMessageTool {
+    pub fn new(
+        name: String,
+        description: String,
+        input_schema: Option<serde_json::Value>,
+        required: Vec<String>,
+    ) -> Self {
+        Self {
+            name,
+            description,
+            input_schema,
+            required,
+            r#type: None,
+        }
+    }
+
+    pub fn with_type(name: String, r#type: String) -> Self {
+        Self {
+            name,
+            r#type: Some(r#type),
+            description: "".to_owned(),
+            input_schema: None,
+            required: vec![],
+        }
+    }
+
+    pub fn has_type(&self) -> bool {
+        self.r#type.is_some()
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn r#type(&self) -> Option<String> {
+        self.r#type.clone()
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientToolReturn {
+    tool_use_id: String,
+    content: String,
+}
+
+impl LLMClientToolReturn {
+    pub fn new(tool_use_id: String, content: String) -> Self {
+        Self {
+            tool_use_id,
+            content,
+        }
+    }
+
+    pub fn tool_use_id(&self) -> &str {
+        &self.tool_use_id
+    }
+
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientToolUse {
+    name: String,
+    input: serde_json::Value,
+    id: String,
+}
+
+impl LLMClientToolUse {
+    pub fn new(name: String, id: String, input: serde_json::Value) -> Self {
+        Self { name, id, input }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn input(&self) -> &serde_json::Value {
+        &self.input
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
+pub struct LLMClientMessageImage {
+    r#type: String,
+    media: String,
+    data: String,
+}
+
+impl LLMClientMessageImage {
+    pub fn new(r#type: String, media: String, data: String) -> Self {
+        Self {
+            r#type,
+            media,
+            data,
+        }
+    }
+
+    pub fn r#type(&self) -> &str {
+        &self.r#type
+    }
+
+    pub fn media(&self) -> &str {
+        &self.media
+    }
+
+    pub fn data(&self) -> &str {
+        &self.data
+    }
+}
+
+#[derive(serde::Serialize, Debug, Clone)]
 pub struct LLMClientMessage {
     role: LLMClientRole,
     message: String,
+    images: Vec<LLMClientMessageImage>,
+    tools: Vec<serde_json::Value>,
     function_call: Option<LLMClientMessageFunctionCall>,
     function_return: Option<LLMClientMessageFunctionReturn>,
+    /// this is going to bite us later on, but until we format the
+    /// tool use properly we can figure this out later on
+    tool_use: Vec<LLMClientToolUse>,
+    tool_return: Vec<LLMClientToolReturn>,
     // if this message marks a caching point in the overall message
     cache_point: bool,
 }
 
 impl LLMClientMessage {
-    pub fn new(role: LLMClientRole, message: String) -> Self {
+    pub fn new(role: LLMClientRole, message: String, images: Vec<LLMClientMessageImage>) -> Self {
         Self {
             role,
             message,
+            images,
+            tools: vec![],
+            tool_use: vec![],
+            tool_return: vec![],
             function_call: None,
             function_return: None,
             cache_point: false,
@@ -322,13 +457,21 @@ impl LLMClientMessage {
     pub fn concat(self, other: Self) -> Self {
         // We are going to concatenate the 2 llm client messages togehter, at this moment
         // we are just gonig to join the message with a \n
+        let mut final_images = self.images.to_vec();
+        final_images.extend(other.images);
+        let mut final_tools = self.tools.to_vec();
+        final_tools.extend(other.tools);
         Self {
             role: self.role,
             message: self.message + "\n" + &other.message,
+            images: final_images,
+            tools: final_tools,
             function_call: match self.function_call {
                 Some(function_call) => Some(function_call),
                 None => other.function_call,
             },
+            tool_use: vec![],
+            tool_return: vec![],
             function_return: match other.function_return {
                 Some(function_return) => Some(function_return),
                 None => self.function_return,
@@ -341,6 +484,10 @@ impl LLMClientMessage {
         Self {
             role: LLMClientRole::Assistant,
             message: "".to_owned(),
+            images: vec![],
+            tools: vec![],
+            tool_return: vec![],
+            tool_use: vec![],
             function_call: Some(LLMClientMessageFunctionCall { name, arguments }),
             function_return: None,
             cache_point: false,
@@ -351,6 +498,10 @@ impl LLMClientMessage {
         Self {
             role: LLMClientRole::Function,
             message: "".to_owned(),
+            images: vec![],
+            tools: vec![],
+            tool_return: vec![],
+            tool_use: vec![],
             function_call: None,
             function_return: Some(LLMClientMessageFunctionReturn { name, content }),
             cache_point: false,
@@ -358,15 +509,20 @@ impl LLMClientMessage {
     }
 
     pub fn user(message: String) -> Self {
-        Self::new(LLMClientRole::User, message)
+        Self::new(LLMClientRole::User, message, vec![])
+    }
+
+    pub fn with_images(mut self, images: Vec<LLMClientMessageImage>) -> Self {
+        self.images = images;
+        self
     }
 
     pub fn assistant(message: String) -> Self {
-        Self::new(LLMClientRole::Assistant, message)
+        Self::new(LLMClientRole::Assistant, message, vec![])
     }
 
     pub fn system(message: String) -> Self {
-        Self::new(LLMClientRole::System, message)
+        Self::new(LLMClientRole::System, message, vec![])
     }
 
     pub fn content(&self) -> &str {
@@ -380,7 +536,7 @@ impl LLMClientMessage {
     }
 
     pub fn function(message: String) -> Self {
-        Self::new(LLMClientRole::Function, message)
+        Self::new(LLMClientRole::Function, message, vec![])
     }
 
     pub fn role(&self) -> &LLMClientRole {
@@ -414,6 +570,47 @@ impl LLMClientMessage {
 
     pub fn set_role(mut self, role: LLMClientRole) -> Self {
         self.role = role;
+        self
+    }
+
+    pub fn images(&self) -> &[LLMClientMessageImage] {
+        self.images.as_slice()
+    }
+
+    pub fn tools(&self) -> &[serde_json::Value] {
+        &self.tools.as_slice()
+    }
+
+    pub fn insert_tools(mut self, tools: Vec<serde_json::Value>) -> Self {
+        self.tools.extend(tools);
+        self
+    }
+
+    pub fn insert_tool(mut self, tool: serde_json::Value) -> Self {
+        self.tools.push(tool);
+        self
+    }
+
+    pub fn insert_tool_use(mut self, tool_use: LLMClientToolUse) -> Self {
+        self.tool_use.push(tool_use);
+        self
+    }
+
+    pub fn tool_use_value(&self) -> &[LLMClientToolUse] {
+        self.tool_use.as_slice()
+    }
+
+    pub fn insert_tool_use_values(mut self, tool_use_vec: Vec<LLMClientToolUse>) -> Self {
+        self.tool_use.extend(tool_use_vec);
+        self
+    }
+
+    pub fn tool_return_value(&self) -> &[LLMClientToolReturn] {
+        self.tool_return.as_slice()
+    }
+
+    pub fn insert_tool_return_values(mut self, tool_return_vec: Vec<LLMClientToolReturn>) -> Self {
+        self.tool_return.extend(tool_return_vec);
         self
     }
 }

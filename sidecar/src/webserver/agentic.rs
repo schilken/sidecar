@@ -1411,7 +1411,7 @@ pub async fn agent_tool_use(
         exchange_id,
         editor_url,
         query,
-        user_context: _user_context,
+        user_context,
         // agent_mode,
         repo_ref,
         project_labels,
@@ -1437,6 +1437,7 @@ pub async fn agent_tool_use(
         "webserver::agent_session::tool_use::session_id({})",
         &session_id
     );
+    println!("user_context::({:?})", &user_context);
     let cancellation_token = tokio_util::sync::CancellationToken::new();
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     let message_properties = SymbolEventMessageProperties::new(
@@ -1470,6 +1471,7 @@ pub async fn agent_tool_use(
                 root_directory,
                 tool_box,
                 llm_broker,
+                user_context,
                 message_properties,
             )
             .await;

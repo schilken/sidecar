@@ -61,6 +61,27 @@ impl VariableType {
 /// }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ImageInformation {
+    r#type: String,
+    media_type: String,
+    data: String,
+}
+
+impl ImageInformation {
+    pub fn r#type(&self) -> &str {
+        &self.r#type
+    }
+
+    pub fn media_type(&self) -> &str {
+        &self.media_type
+    }
+
+    pub fn data(&self) -> &str {
+        &self.data
+    }
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct VariableInformation {
     pub start_position: Position,
     pub end_position: Position,
@@ -126,6 +147,12 @@ impl VariableInformation {
     }
 
     fn copy_at_instance(mut self) -> Self {
+        println!(
+            "variable:fs_file_path({})::initial_patch_is_some({})::patch_is_some({})",
+            self.fs_file_path.to_owned(),
+            self.initial_patch.is_some(),
+            self.patch.is_some()
+        );
         if let Some(node_patch) = self.patch.clone() {
             // update our patch first by generating the initial_patch as the patch
             // up until the previous node
@@ -175,8 +202,11 @@ impl VariableInformation {
     }
 
     pub fn update_content(mut self, updated_content: &str) -> Self {
-        let base_content = self.base_content();
-        self.patch = Some(diffy::create_patch(&base_content, updated_content).to_string());
+        // hard update our content over here so we override our content
+        // and store no patches since they are going to be part of observations
+        self.content = updated_content.to_owned();
+        // let base_content = self.base_content();
+        // self.patch = Some(diffy::create_patch(&base_content, updated_content).to_string());
         self
     }
 
@@ -342,6 +372,8 @@ pub struct UserContext {
     pub variables: Vec<VariableInformation>,
     #[serde(default)]
     original_variables: Vec<VariableInformation>,
+    #[serde(default)]
+    images: Vec<ImageInformation>,
     // TODO(skcd): The file content map over here contains the full context through out the
     // lifecycle of ownership
     // so we can freely update it when we want
@@ -376,6 +408,7 @@ impl UserContext {
     ) -> Self {
         Self {
             variables: variables.to_vec(),
+            images: vec![],
             file_content_map,
             original_variables: variables,
             terminal_selection,
@@ -385,6 +418,10 @@ impl UserContext {
             is_plan_append: false,
             is_plan_drop_from: None,
         }
+    }
+
+    pub fn images(&self) -> &[ImageInformation] {
+        self.images.as_slice()
     }
 
     pub fn copy_at_instance(mut self) -> Self {
@@ -669,7 +706,21 @@ impl UserContext {
                 })
             })
             .collect::<Vec<_>>();
+        let images_to_extend = self
+            .images
+            .into_iter()
+            .filter(|already_present_image| {
+                !new_user_context.images.iter().any(|image| {
+                    if &image.media_type == &already_present_image.media_type {
+                        &already_present_image.data == &image.data
+                    } else {
+                        false
+                    }
+                })
+            })
+            .collect::<Vec<_>>();
         new_user_context.variables.extend(variables_to_select);
+        new_user_context.images.extend(images_to_extend);
         new_user_context
     }
 
@@ -699,10 +750,6 @@ impl UserContext {
                 }
             })
             .collect()
-    }
-
-    pub fn updated_file_delta(&self, fs_file_path: &str) -> Option<String> {
-        None
     }
 }
 

@@ -1,7 +1,6 @@
 //! Client which generates the reward for the action we have taken
 
 use async_trait::async_trait;
-use quick_xml::de::from_str;
 use std::sync::Arc;
 
 use llm_client::{

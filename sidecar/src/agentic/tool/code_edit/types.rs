@@ -50,7 +50,10 @@ impl CodeEditingPartialRequest {
 
     pub fn to_string(&self) -> String {
         format!(
-            r#"<code_edit_input>
+            r#"<thinking>
+...
+</thinking>
+<code_edit_input>
 <fs_file_path>
 {}
 </fs_file_path>
@@ -480,13 +483,13 @@ impl Tool for CodeEditingTool {
 
     fn tool_description(&self) -> String {
         "### code_edit_input
-Edit a file. The tool is able to edit the file precisely based on instruction. If the file doesn't exist, it will be created. The tool will automatically create any directories needed to write the file.".to_owned()
+Edit a file. The tool is able to edit the file precisely based on instruction. If the file doesn't exist, it will be CREATED. The tool will automatically CREATE any directories needed to write the file.".to_owned()
     }
 
     fn tool_input_format(&self) -> String {
         format!(
             r#"Parameters: 
-- fs_file_path: (required) The absolute path of the file to write to.
+- fs_file_path: (required) The absolute path of the file to write to, will be created if not already present
 - instruction: (required) The edit instruction, if you are going to output code blocks make sure they are properly placed in ```{{language}} blocks so we can present them properly to the user. Only given instructions here which are concise and contain the relevant changes, do not be verbose.
 
 Usage:

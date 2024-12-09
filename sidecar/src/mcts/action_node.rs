@@ -4,18 +4,20 @@ use std::{
     sync::Arc,
 };
 
+use colored::Colorize;
 use llm_client::broker::LLMBroker;
 
 use crate::{
     agentic::{
         symbol::{events::message_event::SymbolEventMessageProperties, tool_box::ToolBox},
-        tool::{input::ToolInputPartial, r#type::ToolType},
+        tool::{code_edit::code_editor::EditorCommand, input::ToolInputPartial, r#type::ToolType},
     },
     mcts::decider::decider::Decider,
     user_context::types::UserContext,
 };
 
 use super::{
+    agent_settings::settings::AgentSettings,
     execution::inference::InferenceEngine,
     feedback::feedback::FeedbackGenerator,
     selector::selector::Selector,
@@ -35,6 +37,8 @@ pub enum ActionObservationMetadataKey {
 pub struct ActionObservation {
     message: String,
     summary: Option<String>,
+    /// The thinking which lead to this action being taken
+    thinking: Option<String>,
     terminal: bool,
     expect_correction: bool,
     #[serde(skip)]
@@ -42,20 +46,27 @@ pub struct ActionObservation {
 }
 
 impl ActionObservation {
-    pub fn errored(message: String, expect_correction: bool, terminal: bool) -> Self {
+    pub fn errored(
+        message: String,
+        thinking: Option<String>,
+        expect_correction: bool,
+        terminal: bool,
+    ) -> Self {
         Self {
             message,
             summary: None,
+            thinking,
             terminal,
             expect_correction,
             metadata: Default::default(),
         }
     }
 
-    pub fn new(message: String, summary: String, terminal: bool) -> Self {
+    pub fn new(message: String, summary: String, thinking: Option<String>, terminal: bool) -> Self {
         Self {
             message,
             summary: Some(summary),
+            thinking,
             terminal,
             expect_correction: false,
             metadata: Default::default(),
@@ -74,11 +85,8 @@ impl ActionObservation {
         self.metadata
             .iter()
             .filter_map(|(key, value)| {
-                if let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key {
-                    Some((fs_file_path.to_owned(), value.to_owned()))
-                } else {
-                    None
-                }
+                let ActionObservationMetadataKey::FileContentUpdated(fs_file_path) = key;
+                Some((fs_file_path.to_owned(), value.to_owned()))
             })
             .collect()
     }
@@ -96,12 +104,39 @@ impl ActionObservation {
     pub fn expect_correction(&self) -> bool {
         self.expect_correction
     }
+
+    pub fn thinking(&self) -> Option<String> {
+        self.thinking.clone()
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ActionToolInputPartial {
+    tool_use_id: String,
+    tool_input_partial: ToolInputPartial,
+}
+
+impl ActionToolInputPartial {
+    pub fn new(tool_use_id: String, tool_input_partial: ToolInputPartial) -> Self {
+        Self {
+            tool_use_id,
+            tool_input_partial,
+        }
+    }
+
+    pub fn tool_use_id(&self) -> &str {
+        &self.tool_use_id
+    }
+
+    pub fn tool_input_partial(&self) -> &ToolInputPartial {
+        &self.tool_input_partial
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ActionToolParameters {
     Errored(String),
-    Tool(ToolInputPartial),
+    Tool(ActionToolInputPartial),
 }
 
 impl ActionToolParameters {
@@ -109,8 +144,8 @@ impl ActionToolParameters {
         Self::Errored(error_str)
     }
 
-    pub fn tool(tool_input: ToolInputPartial) -> Self {
-        Self::Tool(tool_input)
+    pub fn tool(tool_use_id: String, tool_input: ToolInputPartial) -> Self {
+        Self::Tool(ActionToolInputPartial::new(tool_use_id, tool_input))
     }
 
     pub fn to_string(&self) -> String {
@@ -118,14 +153,16 @@ impl ActionToolParameters {
             Self::Errored(error_string) => {
                 format!("Failed to generate action. Error: {error_string}")
             }
-            Self::Tool(tool_input_partial) => tool_input_partial.to_string(),
+            Self::Tool(tool_input_partial) => tool_input_partial.tool_input_partial.to_string(),
         }
     }
 
     pub fn to_tool_type(&self) -> Option<ToolType> {
         match self {
             Self::Errored(_) => None,
-            Self::Tool(tool_input_partial) => Some(tool_input_partial.to_tool_type()),
+            Self::Tool(tool_input_partial) => {
+                Some(tool_input_partial.tool_input_partial.to_tool_type())
+            }
         }
     }
 }
@@ -298,6 +335,8 @@ pub struct SearchTree {
     reward_threshold: Option<f32>,
     /// The minimum number of finished nodes to consider before finishing
     min_finished_nodes: Option<usize>,
+    /// Maximum number of times to try out the search
+    max_search_try: Option<usize>,
 
     selector: Selector,
     #[serde(skip)]
@@ -309,9 +348,14 @@ pub struct SearchTree {
     llm_client: Arc<LLMBroker>,
     // repo-ref
     repo_name: String,
+    /// Repository base commit hash
+    repo_base_commit_hash: String,
     // The tool box
     #[serde(skip)]
     tool_box: Arc<ToolBox>,
+    log_directory: String,
+    /// Settings for the agent components
+    agent_settings: AgentSettings,
 }
 
 impl SearchTree {
@@ -322,13 +366,17 @@ impl SearchTree {
         max_finished_nodes: Option<usize>,
         reward_threshold: Option<f32>,
         min_finished_nodes: Option<usize>,
+        max_search_try: Option<usize>,
         root_directory: String,
         repo_name: String,
+        repo_base_commit_hash: String,
         problem_statement: String,
         selector: Selector,
         tools: Vec<ToolType>,
         tool_box: Arc<ToolBox>,
         llm_client: Arc<LLMBroker>,
+        log_directory: String,
+        agent_settings: AgentSettings,
     ) -> Self {
         let root_node = ActionNode::new(0, max_expansions).set_message(problem_statement);
         Self {
@@ -338,16 +386,20 @@ impl SearchTree {
             max_expansions,
             root_node_index: 0,
             max_depth,
+            max_search_try,
             max_iterations,
             max_finished_nodes,
             reward_threshold,
             min_finished_nodes,
+            repo_base_commit_hash,
             selector,
             tool_box,
             tools,
             root_directory,
             llm_client,
             repo_name,
+            log_directory,
+            agent_settings,
         }
     }
     pub fn root(&self) -> Option<&ActionNode> {
@@ -501,14 +553,6 @@ impl SearchTree {
                     .iter()
                     .filter_map(move |idx| self.index_to_node.get(idx))
             })
-    }
-
-    fn get_root<'a>(&'a self, node: &'a ActionNode) -> &'a ActionNode {
-        let mut current_node = node;
-        while let Some(parent_node) = self.parent(current_node) {
-            current_node = parent_node;
-        }
-        current_node
     }
 
     pub fn get_sibling_nodes(&self, node_index: usize) -> Vec<&ActionNode> {
@@ -995,8 +1039,13 @@ impl SearchTree {
     pub fn select(&mut self) -> Option<usize> {
         let expandable_nodes = self.expandable_node(self.root_node_index);
         println!(
-            "Selection phase - {} expandable nodes",
-            expandable_nodes.len()
+            "Selection phase::expandable nodes - {}",
+            expandable_nodes
+                .to_vec()
+                .into_iter()
+                .map(|node| node.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
         );
         let mut filtered_nodes = vec![];
         for expandable_node_index in expandable_nodes.into_iter() {
@@ -1037,7 +1086,12 @@ impl SearchTree {
         }
     }
 
-    pub fn expand<'a>(&'a mut self, node_index: usize) -> Option<usize> {
+    pub fn expand<'a>(
+        &'a mut self,
+        node_index: usize,
+        // This allows us to go beyond the child capacity of the current node
+        allow_larger_child_expansions: bool,
+    ) -> Option<usize> {
         let node = self.get_node(node_index);
         if let None = node {
             return None;
@@ -1049,7 +1103,8 @@ impl SearchTree {
             let child_node = self.get_node(children_index);
             if let Some(child_node) = child_node {
                 // the child is not executed so we grab it
-                if child_node.observation.is_none() {
+                // and also not a duplicate since duplicates do not have observation
+                if child_node.observation.is_none() && !child_node.is_duplicate {
                     return Some(child_node.index);
                 }
             }
@@ -1057,7 +1112,11 @@ impl SearchTree {
 
         // we have already expanded beyond the limit
         if children_len >= self.max_expansions {
-            return None;
+            if !allow_larger_child_expansions {
+                // we are not allowed to go beyond our current children lenght
+                // so fail hard
+                return None;
+            }
         }
 
         let child_node_index = self.get_new_node_index();
@@ -1130,15 +1189,21 @@ impl SearchTree {
                         ActionToolParameters::Tool(first_tool_input_parameters),
                         &ActionToolParameters::Tool(ref second_tool_input_parameters),
                     ) => {
-                        let first_tool_type = first_tool_input_parameters.to_tool_type();
-                        let second_tool_type = second_tool_input_parameters.to_tool_type();
+                        let first_tool_type = first_tool_input_parameters
+                            .tool_input_partial()
+                            .to_tool_type();
+                        let second_tool_type = second_tool_input_parameters
+                            .tool_input_partial()
+                            .to_tool_type();
                         if first_tool_type != second_tool_type {
                             false
                         } else {
                             // now we can compare the tool input parameters
                             // since they do not have the thinking over here
-                            first_tool_input_parameters.to_string()
-                                == second_tool_input_parameters.to_string()
+                            first_tool_input_parameters.tool_input_partial().to_string()
+                                == second_tool_input_parameters
+                                    .tool_input_partial()
+                                    .to_string()
                         }
                     }
                     _ => false,
@@ -1175,6 +1240,16 @@ impl SearchTree {
         // update the node content over here
         if let Some(observation) = node.observation() {
             let updated_file_content = observation.get_updated_file_content();
+            println!(
+                "update_node::node_file_content_updated::node_index({})::({})",
+                node_index,
+                updated_file_content
+                    .keys()
+                    .into_iter()
+                    .map(|fs_file_path| fs_file_path.to_owned())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
             updated_file_content
                 .into_iter()
                 .for_each(|(fs_file_path, updated_file_content)| {
@@ -1188,6 +1263,7 @@ impl SearchTree {
     pub async fn run_node(
         &mut self,
         node_index: usize,
+        is_duplicate_allowed: bool,
         message_properties: SymbolEventMessageProperties,
     ) {
         println!("Simulating node {}", node_index);
@@ -1207,7 +1283,7 @@ impl SearchTree {
         // trajectory
         let nodes_trajectory = self.trajectory(node_index);
 
-        let inference_engine = InferenceEngine::new();
+        let inference_engine = InferenceEngine::new(self.agent_settings.clone());
         // pick the next action we want to take over here
         // - execute the action
         // - add the observation to the node
@@ -1215,6 +1291,7 @@ impl SearchTree {
             .execute(
                 nodes_trajectory,
                 &self,
+                is_duplicate_allowed,
                 self.tool_box.clone(),
                 message_properties.clone(),
             )
@@ -1310,7 +1387,7 @@ impl SearchTree {
         message_properties: SymbolEventMessageProperties,
     ) {
         let nodes_trajectory = self.trajectory(node_index);
-        let feedback = FeedbackGenerator::new()
+        let feedback = FeedbackGenerator::new(self.agent_settings.clone())
             .generate_feedback_for_node(nodes_trajectory, &self, message_properties)
             .await;
         if let Ok(Some(feedback)) = feedback {
@@ -1334,21 +1411,49 @@ impl SearchTree {
         }
         let node = node.expect("if let None above to hold");
 
-        // we run the git-command manually over here
-        tokio::process::Command::new("git")
+        // we run the git-command manually over here in the working directory for
+        // the test repo
+        let _output = tokio::process::Command::new("git")
             .args(&["add", "."])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .current_dir(self.root_directory.to_owned())
             .output()
             .await
             .expect("to work");
-        tokio::process::Command::new("git")
+        let _output = tokio::process::Command::new("git")
             .arg("stash")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .current_dir(self.root_directory.to_owned())
             .output()
             .await
             .expect("to work");
+        // also run git reset --hard to the base commit
+        let _output = tokio::process::Command::new("git")
+            .arg("rest")
+            .arg("--hard")
+            .arg(self.repo_base_commit_hash.to_owned())
+            .current_dir(self.root_directory.to_owned())
+            .output()
+            .await
+            .expect("to work");
+
+        let git_diff_output = tokio::process::Command::new("git")
+            .arg("diff")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .current_dir(self.root_directory.to_owned())
+            .output()
+            .await;
+
+        if let Ok(git_diff_output) = git_diff_output {
+            println!(
+                "post_rest::git_diff_output:({})::stderr({})",
+                String::from_utf8(git_diff_output.stdout).expect("to work"),
+                String::from_utf8(git_diff_output.stderr).expect("to work")
+            );
+        }
 
         // now update the file system to the current node
         for file_variable in node
@@ -1367,65 +1472,120 @@ impl SearchTree {
         println!("\n=== Starting MCTS Search ===");
         let mut iteration = 0;
 
-        loop {
-            iteration += 1;
-            println!("\n--- Iteration {} ---", iteration);
-
-            // Add tree visualization after each iteration
-            self.print_tree();
-
-            // Log node_to_children for debugging
-            self.log_node_to_children();
-
-            if self.is_finished() {
-                println!("Search finished - termination condition met");
-                break;
-            }
-
-            // Selection phase
-            let selected_node = self.select();
-            if let Some(selected_index) = selected_node {
-                self.log_tree_state(selected_index, "Selected:");
-            } else {
-                println!("No node selected - terminating search");
-                break;
-            }
-
-            // Expansion phase
-            let new_node = selected_node.and_then(|n| self.expand(n));
-            if let Some(new_index) = new_node {
-                self.log_tree_state(new_index, "Expanded:");
-            } else {
-                println!("No expansion possible - terminating search");
-                break;
-            }
-
-            let new_index = new_node.expect("Already checked above");
-
-            // Reset and prepare node
-            self.reset_file_system(new_index).await;
-
-            self.generate_feedback_for_node(new_index, message_properties.clone())
-                .await;
-
-            // Simulation
-            self.run_node(new_index, message_properties.clone()).await;
-            self.log_tree_state(new_index, "After simulation:");
-
-            // Backpropagation
-            self.backpropogate(new_index);
-
-            // Log tree statistics
+        // This is the main search loop here depending on how many times we want to try
+        // out the search we can put this in a proper loop over and keep running based on top
+        // of that
+        let max_search_loops = if let Some(max_search_tries) = self.max_search_try {
             println!(
-                "Tree state: {} total nodes, {} expandable",
-                self.index_to_node.len(),
-                self.expandable_node(self.root_node_index).len()
+                "==== DETECTED SINGLE CHILD MODE, TRAJECTORIES TO GENERATE: {} ====",
+                max_search_tries
             );
+            max_search_tries
+        } else {
+            1
+        };
+        // we use this to pivot back to the root node and start again
+        // this allows us to run multiple trajectories at the same time
+        // and literally expand on the search space
+        let mut traj_counter = 0;
+        loop {
+            if traj_counter < max_search_loops {
+                traj_counter = traj_counter + 1;
+                loop {
+                    iteration += 1;
+                    println!("\n--- Traj: {}, Iteration {} ---", traj_counter, iteration);
+
+                    // Add tree visualization after each iteration
+                    self.print_tree();
+
+                    // change as necessary
+                    self.save_serialised_graph(
+                        &self.log_directory,
+                        &message_properties.root_request_id(),
+                    )
+                    .await;
+
+                    // only finish when the current iteration is finished
+                    // and the iteration is not equal to 1 which means we are inside
+                    // and deep into the tree
+                    if self.is_finished() && iteration != 1 {
+                        println!("Search finished - termination condition met");
+                        break;
+                    }
+
+                    // Selection phase
+                    let selected_node = if iteration == 1 {
+                        // If this is the first iteration we have to alwys select
+                        // the root node
+                        Some(self.root_node_index)
+                    } else {
+                        self.select()
+                    };
+                    if let Some(selected_index) = selected_node {
+                        self.log_tree_state(selected_index, "Selected:");
+                    } else {
+                        println!("No node selected - terminating search");
+                        break;
+                    }
+
+                    // Expansion phase
+                    let is_maximum_exceed_allowed = iteration == 1; //  only allowed when we are at the root
+                    let new_node =
+                        selected_node.and_then(|n| self.expand(n, is_maximum_exceed_allowed));
+                    if let Some(new_index) = new_node {
+                        self.log_tree_state(new_index, "Expanded:");
+                    } else {
+                        println!("No expansion possible - terminating search");
+                        break;
+                    }
+
+                    let new_index = new_node.expect("Already checked above");
+
+                    // Reset and prepare node
+                    self.reset_file_system(new_index).await;
+
+                    self.generate_feedback_for_node(new_index, message_properties.clone())
+                        .await;
+
+                    // Simulation
+                    let is_duplicate_allowed = iteration == 1; // only allowed duplicates for the start of the traj
+                    self.run_node(new_index, is_duplicate_allowed, message_properties.clone())
+                        .await;
+                    self.log_tree_state(new_index, "After simulation:");
+
+                    // Backpropagation
+                    self.backpropogate(new_index);
+
+                    // change as necessary is saved over here
+                    self.save_serialised_graph(
+                        &self.log_directory,
+                        &message_properties.root_request_id(),
+                    )
+                    .await;
+
+                    // Log tree statistics
+                    println!(
+                        "Tree state: {} total nodes, {} expandable",
+                        self.index_to_node.len(),
+                        self.expandable_node(self.root_node_index).len()
+                    );
+                }
+                println!("==== SEARCH TREE IS COMPLETE {} ===", traj_counter);
+                // resetting iteration count here and starting again for the new traj
+                println!("=== RESETTING ITERATION UNIT ===");
+                iteration = 0;
+            } else {
+                break;
+            }
         }
         println!("=== Search Complete ===\n");
 
         // Print final tree state
         self.print_tree();
+
+        // save the tree again at the very end when everything has been updated
+        self.save_serialised_graph(&self.log_directory, &message_properties.root_request_id())
+            .await;
 
         println!("=== Deciding answer ===\n");
         let best_node = Decider::new()
@@ -1478,15 +1638,69 @@ impl SearchTree {
         let mut state_params = Vec::new();
         if let Some(action) = &node.action {
             match action {
-                ActionToolParameters::Errored(_err) => state_params.push("Error".to_owned()),
+                ActionToolParameters::Errored(_err) => {
+                    // Show errors in bold red
+                    state_params.push("Error".bold().red().to_string());
+                }
                 ActionToolParameters::Tool(tool) => {
-                    state_params.push(format!("{}", tool.to_tool_type()))
+                    let tool_type = tool.tool_input_partial().to_tool_type();
+                    let tool_str = match tool.tool_input_partial() {
+                        ToolInputPartial::CodeEditorParameters(parameters) => {
+                            // Unique colors for each EditorCommand
+                            match &parameters.command {
+                                EditorCommand::Create => {
+                                    "str_replace_editor::create".blue().to_string()
+                                }
+                                EditorCommand::Insert => {
+                                    "str_replace_editor::insert".yellow().to_string()
+                                }
+                                EditorCommand::StrReplace => {
+                                    "str_replace_editor::str_replace".blue().to_string()
+                                }
+                                EditorCommand::UndoEdit => {
+                                    "str_replace_editor::undo_edit".white().to_string()
+                                }
+                                EditorCommand::View => {
+                                    "str_replace_editor::view".purple().to_string()
+                                }
+                            }
+                        }
+                        ToolInputPartial::CodeEditing(_) => {
+                            tool_type.to_string().bright_purple().to_string()
+                        }
+                        ToolInputPartial::ListFiles(_) => {
+                            tool_type.to_string().bright_yellow().to_string()
+                        }
+                        ToolInputPartial::SearchFileContentWithRegex(_) => {
+                            tool_type.to_string().bright_purple().to_string()
+                        }
+                        ToolInputPartial::OpenFile(_) => {
+                            tool_type.to_string().bright_magenta().to_string()
+                        }
+                        ToolInputPartial::LSPDiagnostics(_) => {
+                            tool_type.to_string().bright_cyan().to_string()
+                        }
+                        ToolInputPartial::TerminalCommand(_) => {
+                            tool_type.to_string().bright_red().to_string()
+                        }
+                        ToolInputPartial::AskFollowupQuestions(_) => {
+                            tool_type.to_string().bright_white().to_string()
+                        }
+                        ToolInputPartial::AttemptCompletion(_) => {
+                            tool_type.to_string().bright_green().to_string()
+                        }
+                        ToolInputPartial::RepoMapGeneration(_) => {
+                            tool_type.to_string().magenta().to_string()
+                        }
+                        ToolInputPartial::TestRunner(_) => tool_type.to_string().red().to_string(),
+                    };
+                    state_params.push(tool_str);
                 }
             }
 
             if let Some(observation) = &node.observation {
                 if observation.expect_correction {
-                    state_params.push("expect_correction".to_string());
+                    state_params.push("expect_correction".to_string().red().to_string());
                 }
             }
         }
@@ -1517,7 +1731,10 @@ impl SearchTree {
 
         // Print the current node
         if node.is_duplicate {
-            println!("{}{}{} {} (dup)", prefix, branch, node_str, state_info);
+            println!(
+                "{}",
+                format!("{}{}{} {} (dup)", prefix, branch, node_str, state_info).bright_red()
+            );
         } else {
             println!(
                 "{}{}{} {} (ex: {}, vi: {}, re: {})",
@@ -1553,7 +1770,7 @@ impl SearchTree {
     }
 
     // Add this helper method for logging node_to_children
-    fn log_node_to_children(&self) {
+    fn _log_node_to_children(&self) {
         println!("Current node_to_children mapping:");
         for (parent_index, children_indices) in &self.node_to_children {
             println!("Node {}: {:?}", parent_index, children_indices);
@@ -1571,6 +1788,37 @@ impl SearchTree {
         };
 
         println!("{}", graph_serialised);
+    }
+
+    async fn save_serialised_graph(&self, log_dir: &str, request_id: &str) {
+        let graph_serialised = match serde_json::to_string(&self) {
+            Ok(serialized) => serialized,
+            Err(err) => {
+                eprintln!("mcts::select::Failed to serialize graph: {}", err);
+                String::from("Failed to serialize graph")
+            }
+        };
+
+        // Create directory if it doesn't exist
+        if let Err(err) = tokio::fs::create_dir_all(log_dir).await {
+            eprintln!("Failed to create log directory: {}", err);
+            return;
+        }
+
+        let log_file_name = format!("{}/mcts-{}.json", log_dir, request_id);
+
+        match tokio::fs::write(&log_file_name, graph_serialised).await {
+            Ok(_) => {
+                println!(
+                    "mcts::action_node::save_serialised_graph::Saved graph to {}",
+                    log_file_name
+                );
+            }
+            Err(err) => eprintln!(
+                "mcts::action_node::save_serialised_graph::Failed to save graph: {}",
+                err
+            ),
+        }
     }
 }
 

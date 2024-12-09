@@ -12,14 +12,17 @@ use crate::{
             r#type::{Tool, ToolType},
         },
     },
-    mcts::action_node::{ActionNode, SearchTree},
+    mcts::{
+        action_node::{ActionNode, SearchTree},
+        agent_settings::settings::AgentSettings,
+    },
 };
 
 use super::error::FeedbackError;
 
 pub struct FeedbackToNode {
     // Analysis of the current task we are on and the different trajectories we have explored
-    analysis: String,
+    _analysis: String,
     // Direct feedback to the AI agent
     feedback: String,
 }
@@ -30,11 +33,13 @@ impl FeedbackToNode {
     }
 }
 
-pub struct FeedbackGenerator {}
+pub struct FeedbackGenerator {
+    agent_settings: AgentSettings,
+}
 
 impl FeedbackGenerator {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(agent_settings: AgentSettings) -> Self {
+        Self { agent_settings }
     }
 }
 
@@ -84,35 +89,76 @@ impl FeedbackGenerator {
             .ok_or(FeedbackError::RootNotFound)?;
 
         Ok(Some(FeedbackToNode {
-            analysis: feedback.analysis().to_owned(),
+            _analysis: feedback.analysis().to_owned(),
             feedback: feedback.feedback().to_owned(),
         }))
     }
 
     fn system_message_for_feedback(&self, search_tree: &SearchTree) -> String {
-        let system_message = format!(
-            r#"Your task is to provide strategic feedback to guide the next execution of an action by another AI assistant.
+        let system_message = if self.agent_settings.is_midwit() {
+            // TODO(skcd): Pick up from here
+            // give feedback about the use of tests to figure out the solution and
+            // the solution space for the agent
+            // safe guarding against the tests will help quite a lot
+            // we can even run a repair agent to make sure that the tests are perfectly setup and
+            // what changes we need to do for running a test
+            format!(
+                r#"Your task is to provide strategic feedback to guide the next execution of an action by another AI assistant. The AI assistant is working as a software engineer and is tasked with solving a <pr_description>.
 
 **Context you will receive:**
 
- * Task Description: The main problem or objective that needs to be addressed wrapped in a <task> tag.
- * History: The conversation leading up to the current state.
- * Hypothetical Attempts: Considred actions that NOT been executed in the current branch. They are hypothetical and serve as insights.
- * Warnings: Any duplicate attempts that have already been tried.
+    * Task Description: The main problem or objective that needs to be addressed wrapped in a <pr_description> tag.
+    * Available Actions: The list of actions available to the agent.
+    * History: The conversation leading up to the current state.
+    * Hypothetical Attempts: Considred actions that NOT been executed in the current branch. They are hypothetical and serve as insights.
+    * Warnings: Any duplicate attempts that have already been tried.
 
 **Your role is to:**
 
- * Analyze What to Do Next: Combine your understanding of the task with insights from considred attempts (which are hypothetical and unexecuted) to determine the best next step.
- * Provide Feedback: Offer strategic guidance that focuses on novel and diverse solutions to address the task directly.
- * Avoid Duplicates: Strongly discourage repeating any actions flagged as duplicates.
+    * Analyze What to Do Next: Combine your understanding of the task with insights from considred attempts (which are hypothetical and unexecuted) to determine the best next step.
+    * Provide Feedback: Offer strategic guidance that focuses on novel and diverse solutions to address the task directly.
+    * Avoid Duplicates: Strongly discourage repeating any actions flagged as duplicates.
+    * Reproducing the error: Direct the AI assistant towards generating a SMALL reproduction of the <pr_description>. Often times there are test setup issues and your feedback should try to fix as many of them in a single go as possible.
 
 **Instructions:**
 
- * Analysis: Begin with a brief analysis that combines understanding the task and insights from considered (hypothetical) attempts, focusing on what should be done next.
- * Direct Feedback: Provide one concrete and innovative suggestion for the next action, specifying which available action to use (using the exact name from Available Actions) and how it addresses the task.
+    * Analysis: Begin with a thorough analysis that combines understanding the task and insights from considered (hypothetical) attempts, focusing on what should be done next.
+    * Direct Feedback: Provide one concrete and innovative suggestion for the next action, specifying which available action to use (using the exact name from Available Actions) and how it addresses the task. Focus on details over here and try to avoid taking the same action. Your feedback should either help the AI assistant not make the same mistakes or provide a new novel direction to approach.
+
+**Guiding philosophy**
+    * Focus on the task's objectives and encourage a novel solution that hasn't been explored yet.
+    * Make sure to check the History to understand the trajectory the agent is one.
+    * You are not allowed to make any changes to the tests directory, and we are NOT ALLOWED TO RUN TESTS. This means that advising the AI assistant to run tests is not useful and instead focussing on getting the reproduce_error script to work is of utmost importance.
+    * I've already taken care of all changes to any of the test files described in the <pr_description>. This means we can't modify the testing logic or any of the tests in any way!
+    * If you notice that the AI assistant is going down a rabbit hole of changes, your feedback should help the assistant recognise that and try for a simpler solution. SIMPLER SOLUTIONS are always preferred by the system.
+
+Remember: Focus on the task's objectives and encourage a novel solution that hasn't been explored yet. Use previous attempts as learning points but do not let them constrain your creativity in solving the task. The considered attempts are hypothetical and should inform, but not limit, your suggested action."#
+            )
+        } else {
+            format!(
+                r#"Your task is to provide strategic feedback to guide the next execution of an action by another AI assistant.
+    
+**Context you will receive:**
+
+    * Task Description: The main problem or objective that needs to be addressed wrapped in a <task> tag.
+    * History: The conversation leading up to the current state.
+    * Hypothetical Attempts: Considred actions that NOT been executed in the current branch. They are hypothetical and serve as insights.
+    * Warnings: Any duplicate attempts that have already been tried.
+
+**Your role is to:**
+
+    * Analyze What to Do Next: Combine your understanding of the task with insights from considred attempts (which are hypothetical and unexecuted) to determine the best next step.
+    * Provide Feedback: Offer strategic guidance that focuses on novel and diverse solutions to address the task directly.
+    * Avoid Duplicates: Strongly discourage repeating any actions flagged as duplicates.
+
+**Instructions:**
+
+    * Analysis: Begin with a brief analysis that combines understanding the task and insights from considered (hypothetical) attempts, focusing on what should be done next.
+    * Direct Feedback: Provide one concrete and innovative suggestion for the next action, specifying which available action to use (using the exact name from Available Actions) and how it addresses the task.
     
 Remember: Focus on the task's objectives and encourage a novel solution that hasn't been explored yet. Use previous attempts as learning points but do not let them constrain your creativity in solving the task. The considered attempts are hypothetical and should inform, but not limit, your suggested action."#
-        );
+            )
+        };
 
         // get the tools from the search tree over here so we can show that to the system message
         let tool_box = search_tree.tool_box();
@@ -280,8 +326,8 @@ This attempt was identical to a previous one. Repeating this exact approach woul
             format!(
                 r#"{sibling_analysis}
 
-**WARNING: FINISH ACTION HAS ALREADY BEEN ATTEMPTED!**
-- Trying to finish again would be ineffective
+**WARNING: ATTEMPT COMPLETION HAS ALREADY BEEN ATTEMPTED!**
+- Trying to attemp_completion again would be ineffective
 - Focus on exploring alternative solutions instead"#
             )
         } else {
@@ -293,6 +339,12 @@ This attempt was identical to a previous one. Repeating this exact approach woul
 
     /// Generates the message for the trajectory so we can give that as feedback
     /// to the agent
+    /// root
+    ///      -> parent
+    ///           -> sibling
+    ///           -> sibling
+    /// git_patch_until_parent
+    /// agent_context_until_parent
     fn message_for_trajectory(
         &self,
         leaf: &ActionNode,
@@ -406,9 +458,13 @@ Below is the history of previously executed actions and their observations.
         };
 
         let current_message = format!(
-            r#"{current_message}
+            r#"<pr_description>
+{current_message}
+</pr_description>
 
+<action_observations>
 {action_observations}
+</action_observations>
 
 The file context the agent has access to:
 <files>

@@ -25,15 +25,45 @@ impl TerminalInputPartial {
         &self.command
     }
 
+    pub fn sanitise_for_repro_script(self) -> Self {
+        if self.command.contains("reproduce_error.py") && self.command.contains("python") {
+            Self {
+                command: "python reproduce_error.py".to_owned(),
+            }
+        } else {
+            self
+        }
+    }
+
     pub fn to_string(&self) -> String {
         format!(
-            r#"<execute_command>
+            r#"<thinking>
+...
+</thinking>
+<execute_command>
 <command>
 {}
 </command>
 </execute_command>"#,
             self.command
         )
+    }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "execute_command",
+            "description": r#"Request to execute a CLI command on the system. Commands will be executed in the current working directory."#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "(required) The CLI command to execute. This should be valid for the current operating system. Ensure the command is properly formatted and does not contain any harmful instructions.",
+                    }
+                },
+                "required": ["command"],
+            },
+        })
     }
 }
 

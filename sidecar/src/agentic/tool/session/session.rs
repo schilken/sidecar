@@ -47,7 +47,7 @@ use crate::{
 };
 
 use super::{
-    chat::{SessionChatClientRequest, SessionChatMessage},
+    chat::{SessionChatClientRequest, SessionChatMessage, SessionChatMessageImage},
     hot_streak::SessionHotStreakRequest,
     tool_use_agent::{ToolUseAgent, ToolUseAgentInput, ToolUseAgentOutput},
 };
@@ -485,7 +485,20 @@ impl Exchange {
             ExchangeType::HumanChat(ref chat_message) => {
                 // TODO(skcd): Figure out caching etc later on
                 let prompt = chat_message.query.to_owned();
-                SessionChatMessage::user(prompt)
+                let images = chat_message
+                    .user_context
+                    .images()
+                    .into_iter()
+                    .map(|user_context_image| {
+                        SessionChatMessageImage::new(
+                            user_context_image.r#type().to_owned(),
+                            user_context_image.media_type().to_owned(),
+                            user_context_image.data().to_owned(),
+                        )
+                    })
+                    .collect();
+                // TODO(skcd): We also need to pass messages here for the images which we are getting
+                SessionChatMessage::user(prompt, images)
             }
             ExchangeType::AgentChat(ref chat_message) => {
                 // This completely breaks we have to figure out how to covert
@@ -494,23 +507,30 @@ impl Exchange {
                 let reply = chat_message.reply.clone();
                 match reply {
                     ExchangeReplyAgent::Chat(chat_reply) => {
-                        SessionChatMessage::assistant(chat_reply.reply.to_owned())
+                        SessionChatMessage::assistant(chat_reply.reply.to_owned(), vec![])
                     }
                     ExchangeReplyAgent::Edit(edit_reply) => {
                         if edit_reply.accepted {
-                            SessionChatMessage::assistant(edit_reply.edits_made_diff.to_owned())
+                            SessionChatMessage::assistant(
+                                edit_reply.edits_made_diff.to_owned(),
+                                vec![],
+                            )
                         } else {
                             let edits_made = edit_reply.edits_made_diff.to_owned();
-                            SessionChatMessage::assistant(format!(
-                                r#"I made the following edits and the user REJECTED them
+                            SessionChatMessage::assistant(
+                                format!(
+                                    r#"I made the following edits and the user REJECTED them
 {edits_made}"#
-                            ))
+                                ),
+                                vec![],
+                            )
                         }
                     }
                     ExchangeReplyAgent::Plan(plan_reply) => {
                         if plan_reply.plan_discarded {
                             SessionChatMessage::assistant(
                                 "The Plan I came up with was REJECTED by the user".to_owned(),
+                                vec![],
                             )
                         } else {
                             let plan_steps = plan_reply
@@ -540,36 +560,48 @@ impl Exchange {
                                 })
                                 .collect::<Vec<_>>()
                                 .join("\n");
-                            SessionChatMessage::assistant(format!(
-                                "I came up with the plan below and the user was happy
+                            SessionChatMessage::assistant(
+                                format!(
+                                    "I came up with the plan below and the user was happy
 {plan_steps}"
-                            ))
+                                ),
+                                vec![],
+                            )
                         }
                     }
                     ExchangeReplyAgent::Tool(tool_input) => {
                         let tool_input_parameters = &tool_input.tool_input_partial;
                         let thinking = &tool_input.thinking;
-                        SessionChatMessage::assistant(format!(
-                            r#"<thinking>
+                        SessionChatMessage::assistant(
+                            format!(
+                                r#"<thinking>
 {thinking}
 </thinking>
 {}"#,
-                            tool_input_parameters.to_string()
-                        ))
+                                tool_input_parameters.to_string()
+                            ),
+                            vec![],
+                        )
                     }
                 }
             }
-            ExchangeType::ToolOutput(ref tool_output) => SessionChatMessage::user(format!(
-                "Tool Output ({}): {}",
-                tool_output.tool_type.to_string(),
-                tool_output.output
-            )),
+            ExchangeType::ToolOutput(ref tool_output) => SessionChatMessage::user(
+                format!(
+                    "Tool Output ({}): {}",
+                    tool_output.tool_type.to_string(),
+                    tool_output.output,
+                ),
+                vec![],
+            ),
             ExchangeType::Plan(ref plan) => {
                 let user_query = &plan.query;
-                SessionChatMessage::user(format!(
-                    r#"I want a plan of edits to help solve this:
+                SessionChatMessage::user(
+                    format!(
+                        r#"I want a plan of edits to help solve this:
 {user_query}"#
-                ))
+                    ),
+                    vec![],
+                )
             }
             ExchangeType::Edit(ref anchored_edit) => {
                 let edit_information = &anchored_edit.information;
@@ -598,7 +630,7 @@ impl Exchange {
                         )
                     }
                 };
-                SessionChatMessage::user(user_query)
+                SessionChatMessage::user(user_query, vec![])
             }
         }
     }
@@ -713,6 +745,7 @@ impl Session {
                                         SessionChatMessage::new(
                                             role,
                                             "... truncated output".to_owned(),
+                                            vec![],
                                         );
                                 },
                             );
@@ -855,6 +888,7 @@ impl Session {
         all_files: Vec<String>,
         open_files: Vec<String>,
         _shell: String,
+        user_context: UserContext,
     ) -> Session {
         let user_message = format!(
             r#"<editor_status>
@@ -875,7 +909,7 @@ impl Session {
         let exchange = Exchange::human_chat(
             exchange_id,
             user_message,
-            UserContext::default(),
+            user_context,
             self.project_labels.to_vec(),
             self.repo_ref.clone(),
         );
@@ -2167,10 +2201,11 @@ The Github Issue we are trying to solve is:
             message_properties.request_id_str().to_owned()
         };
         match tool_input_partial {
-            ToolInputPartial::TestRunner(fs_file_paths) => {
+            ToolInputPartial::TestRunner(test_runner) => {
                 let editor_url = message_properties.editor_url().to_owned();
+                let fs_file_paths = test_runner.fs_file_paths();
                 let input =
-                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.clone(), editor_url));
+                    ToolInput::RunTests(TestRunnerRequest::new(fs_file_paths.to_vec(), editor_url));
                 let response = tool_box
                     .tools()
                     .invoke(input)
@@ -2697,6 +2732,9 @@ This is part of the file which might not contain the method in full, if thats th
                     repo_map_str.to_owned(),
                     UserContext::default(),
                 );
+            }
+            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {
+                // we do not use this tool via the session.invoke_tool flow at all
             }
         }
         Ok(self)

@@ -15,6 +15,50 @@ pub struct TestRunnerRequest {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TestRunnerRequestPartial {
+    fs_file_paths: Vec<String>,
+}
+
+impl TestRunnerRequestPartial {
+    pub fn new(file_paths: Vec<String>) -> Self {
+        Self {
+            fs_file_paths: file_paths,
+        }
+    }
+
+    pub fn fs_file_paths(self) -> Vec<String> {
+        self.fs_file_paths.to_vec()
+    }
+
+    pub fn to_string(&self) -> String {
+        self.fs_file_paths.to_vec().join(" ,")
+    }
+
+    pub fn to_json() -> serde_json::Value {
+        serde_json::json!({
+            "name": "test_runner",
+            "description": r#"Runs the tests in the provided files
+
+# Requirements:
+You should verify where the test files are located, only use test_runner tool after you have this information"#,
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "fs_file_paths": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        },
+                        "description": "(required) A list of file paths to run tests for, separated by newlines",
+                    },
+                },
+                "required": ["fs_file_paths"],
+            },
+        })
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestRunnerResponse {
     test_output: String,
     exit_code: i32,
@@ -65,7 +109,10 @@ impl Tool for TestRunner {
 
     fn tool_description(&self) -> String {
         r#"### test_runner
-Runs the tests in the provided files"#
+Runs the tests in the provided files
+
+#### Requirements:
+You should verify where the test files are located, only use test_runner tool after you have this information"#
             .to_owned()
     }
 
@@ -89,6 +136,7 @@ path/to/file2.py
             " * Minor, Easily Fixable Failures: Lightly penalize or treat as neutral.",
             " * Foreseeable Failures: Penalize appropriately based on the complexity of the fix.",
             " * Unforeseeable Failures: Penalize very lightly or reward for providing new insights.",
+            " * Backward Compatibility issues: Understand the context in which test cases are failing, if backward compatibility is required then its a big failure, if that is not really the case then the failures can be ignored",
             "Impact of Failures: Consider the overall impact of test failures on the solution's viability.",
             "Iterative Improvement: Encourage fixing minor issues in subsequent iterations.",
             "Explanation Requirement: In your explanation, describe any test failures, their likely causes, and suggest potential next steps.",
@@ -110,7 +158,8 @@ path/to/file2.py
             ToolRewardScale::new(
                 50,
                 74,
-                "Tests have some failures, but they are minor or unforeseeable, and the agent shows understanding in interpreting results.",
+                // TODO(skcd): Added more instructions to check the test output more clearly.
+                "Tests have some failures, but they are minor or unforeseeable, and the agent shows understanding in interpreting results. The test failures do not cause any regressions to the user task.",
             ),
             ToolRewardScale::new(
                 25,

@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 
 use sqlx::SqlitePool;
@@ -6,6 +7,11 @@ use crate::{clients::types::LLMClientError, config::LLMBrokerConfiguration};
 
 pub async fn init(config: LLMBrokerConfiguration) -> Result<SqlitePool, LLMClientError> {
     let data_dir = config.data_dir.to_string_lossy().to_owned();
+
+    if let Err(e) = fs::create_dir_all(data_dir.as_ref()) {
+        println!("Failed to create data directory: {e}");
+        return Err(LLMClientError::SqliteSetupError);
+    }
 
     match connect(&data_dir).await {
         Ok(pool) => Ok(pool),
@@ -17,17 +23,31 @@ pub async fn init(config: LLMBrokerConfiguration) -> Result<SqlitePool, LLMClien
 }
 
 async fn connect(data_dir: &str) -> Result<SqlitePool, LLMClientError> {
-    let url = format!("sqlite://{data_dir}/llm_data.data?mode=rwc");
-    let pool = SqlitePool::connect(&url)
-        .await
-        .map_err(|_| LLMClientError::TokioMpscSendError)?;
+    println!("Attempting to connect to SQLite database at {data_dir}/llm_data.data");
 
+    let url = format!("sqlite://{data_dir}/llm_data.data?mode=rwc");
+    println!("Using SQLite connection URL: {url}");
+
+    let pool = match SqlitePool::connect(&url).await {
+        Ok(p) => {
+            println!("Successfully established SQLite connection pool");
+            p
+        }
+        Err(e) => {
+            println!("Failed to create SQLite connection pool: {e}");
+            return Err(LLMClientError::TokioMpscSendError);
+        }
+    };
+
+    println!("Running database migrations...");
     if let Err(e) = sqlx::migrate!().run(&pool).await {
-        // We manually close the pool here to ensure file handles are properly cleaned up on
-        // Windows.
+        println!("Migration failed: {e}");
+        println!("Closing pool due to migration failure");
         pool.close().await;
-        Err(e).map_err(|_e| LLMClientError::SqliteSetupError)?
+        println!("Pool closed successfully");
+        Err(LLMClientError::SqliteSetupError)
     } else {
+        println!("Database migrations completed successfully");
         Ok(pool)
     }
 }

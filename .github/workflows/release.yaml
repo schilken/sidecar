@@ -31,7 +31,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Extract OS and arch from matrix name
+    - name: Extract build target information
       shell: bash
       run: |
         OS=$(echo "${{ matrix.job.name }}" | cut -d'-' -f1)
@@ -40,7 +40,7 @@ jobs:
         echo "OS_NAME=${OS}" >> $GITHUB_ENV
         echo "ARCH=${ARCH}" >> $GITHUB_ENV
 
-    - name: Install prerequisites
+    - name: Install Linux cross-compilation dependencies
       shell: bash
       run: |
         case ${{ matrix.job.target }} in
@@ -53,7 +53,7 @@ jobs:
       with:
         targets: ${{ matrix.job.target }}
 
-    - name: Install cross
+    - name: Install cross for cross-compilation
       if: matrix.job.use-cross
       uses: taiki-e/install-action@v2
       with:
@@ -64,7 +64,7 @@ jobs:
       shell: bash
       run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
 
-    - name: Build
+    - name: Build binary
       shell: bash
       run: $BUILD_CMD build --locked --release --target=${{ matrix.job.target }}
 
@@ -108,17 +108,17 @@ jobs:
         }
         Pop-Location
 
-    - id: 'auth'
+    - name: Authenticate with Google Cloud
       uses: 'google-github-actions/auth@v2'
       with:
         credentials_json: '${{ secrets.GCP_CREDENTIALS }}'
 
-    - name: 'Set up Cloud SDK'
+    - name: Configure Google Cloud SDK
       uses: 'google-github-actions/setup-gcloud@v2'
       with:
         project_id: "${{ secrets.GCP_PROJECT_ID }}"
 
-    - name: Release a new version
+    - name: Update version
       env:
         OS_NAME: ${{ env.OS_NAME }}
         ARCH: ${{ env.ARCH }}
@@ -128,7 +128,7 @@ jobs:
       run: |
         ./update_version.sh
 
-    - name: Upload zip file to GCP
+    - name: Upload zip to GCP
       env:
         OS_NAME: ${{ env.OS_NAME }}
         ARCH: ${{ env.ARCH }}

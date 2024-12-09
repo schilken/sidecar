@@ -134,9 +134,8 @@ jobs:
       env:
         OS_NAME: ${{ env.OS_NAME }}
         ARCH: ${{ env.ARCH }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.BINARIES_RELEASE_PAT }}
         GITHUB_USERNAME: ${{ github.repository_owner }}
-        FORCE_UPDATE: ${{ github.event.inputs.force_version }}
       run: |
         ./update_version.sh
 

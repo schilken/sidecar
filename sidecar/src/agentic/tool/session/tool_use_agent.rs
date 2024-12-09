@@ -7,6 +7,7 @@ use llm_client::{
     broker::LLMBroker,
     clients::{
         anthropic::AnthropicClient,
+        open_router::OpenRouterClient,
         types::{LLMClientCompletionRequest, LLMClientMessage},
     },
 };
@@ -807,25 +808,47 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         let response = run_with_cancellation(
             cancellation_token.clone(),
             tokio::spawn(async move {
-                AnthropicClient::new()
-                    .stream_completion_with_tool(
-                        llm_properties.api_key().clone(),
-                        LLMClientCompletionRequest::new(
-                            llm_properties.llm().clone(),
-                            final_messages,
-                            0.2,
-                            None,
-                        ),
-                        // llm_properties.provider().clone(),
-                        vec![
-                            ("event_type".to_owned(), "tool_use".to_owned()),
-                            ("root_id".to_owned(), cloned_root_request_id),
-                        ]
-                        .into_iter()
-                        .collect(),
-                        sender,
-                    )
-                    .await
+                if llm_properties.provider().is_anthropic_api_key() {
+                    AnthropicClient::new()
+                        .stream_completion_with_tool(
+                            llm_properties.api_key().clone(),
+                            LLMClientCompletionRequest::new(
+                                llm_properties.llm().clone(),
+                                final_messages,
+                                0.2,
+                                None,
+                            ),
+                            // llm_properties.provider().clone(),
+                            vec![
+                                ("event_type".to_owned(), "tool_use".to_owned()),
+                                ("root_id".to_owned(), cloned_root_request_id),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            sender,
+                        )
+                        .await
+                } else {
+                    OpenRouterClient::new()
+                        .stream_completion_with_tool(
+                            llm_properties.api_key().clone(),
+                            LLMClientCompletionRequest::new(
+                                llm_properties.llm().clone(),
+                                final_messages,
+                                0.2,
+                                None,
+                            ),
+                            // llm_properties.provider().clone(),
+                            vec![
+                                ("event_type".to_owned(), "tool_use".to_owned()),
+                                ("root_id".to_owned(), cloned_root_request_id),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            sender,
+                        )
+                        .await
+                }
             }),
         )
         .await;

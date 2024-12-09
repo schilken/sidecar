@@ -184,6 +184,10 @@ impl InferenceEngine {
                                             .insert_tool_return_values(vec![
                                                 LLMClientToolReturn::new(
                                                     tool_parameters.tool_use_id().to_owned(),
+                                                    tool_parameters
+                                                        .tool_input_partial()
+                                                        .to_tool_type()
+                                                        .to_string(),
                                                     observation.message().to_owned(),
                                                 ),
                                             ]),

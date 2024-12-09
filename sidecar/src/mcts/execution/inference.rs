@@ -1,7 +1,8 @@
 //! Executes the nodes for coding its main purpose is the following:
 //! fn execute(nodes: Vec<&ActionNode>) -> Result<ToolOutput, ExecutionError>;
 
-use std::{collections::HashMap, path::Path, sync::Arc};
+use colored::Colorize;
+use std::{collections::HashMap, path::Path, sync::Arc, time::Duration};
 
 use llm_client::clients::types::{LLMClientMessage, LLMClientToolReturn, LLMClientToolUse};
 
@@ -297,7 +298,11 @@ impl InferenceEngine {
             if tool_use_output.is_ok() {
                 break;
             } else {
-                println!("inference::engine::retrying_tool_call::erroredbefore");
+                println!(
+                    "{}",
+                    format!("inference::engine::retrying_tool_call::erroredbefore").red()
+                );
+                tokio::time::sleep(Duration::from_secs(1)).await;
                 // just give it a plain retry and call it a day
                 tool_retry_index = tool_retry_index + 1;
             }

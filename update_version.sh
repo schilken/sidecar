@@ -77,18 +77,9 @@ git config user.name "${GITHUB_USERNAME} CI"
 git remote rm origin
 git remote add origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@${GH_HOST}/${VERSIONS_REPOSITORY}.git" &> /dev/null
 
-
-
-if [[ "${OS_NAME}" == "darwin" ]]; then
-  VERSION_PATH="extension/${QUALITY}/darwin"
-  updateLatestVersion
-elif [[ "${OS_NAME}" == "windows" ]]; then
-  VERSION_PATH="extension/${QUALITY}/win32"
-  updateLatestVersion
-else # linux
-  VERSION_PATH="extension/${QUALITY}/linux"
-  updateLatestVersion
-fi
+# update latest.json
+VERSION_PATH="sidecar/${OS_NAME}/${ARCH}/latest.json"
+updateLatestVersion
 
 cd "${REPOSITORY_NAME}" || { echo "'${REPOSITORY_NAME}' dir not found"; exit 1; }
 

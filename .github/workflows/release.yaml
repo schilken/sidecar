@@ -31,6 +31,15 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
+    - name: Extract OS and arch from matrix name
+      shell: bash
+      run: |
+        OS=$(echo "${{ matrix.job.name }}" | cut -d'-' -f1)
+        ARCH=$(echo "${{ matrix.job.name }}" | cut -d'-' -f2)
+
+        echo "OS_NAME=${OS}" >> $GITHUB_ENV
+        echo "ARCH=${ARCH}" >> $GITHUB_ENV
+
     - name: Install prerequisites
       shell: bash
       run: |
@@ -111,6 +120,8 @@ jobs:
 
     - name: Release a new version
       env:
+        OS_NAME: ${{ env.OS_NAME }}
+        ARCH: ${{ env.ARCH }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         GITHUB_USERNAME: ${{ github.repository_owner }}
         FORCE_UPDATE: ${{ github.event.inputs.force_version }}
@@ -119,14 +130,12 @@ jobs:
 
     - name: Upload zip file to GCP
       env:
+        OS_NAME: ${{ env.OS_NAME }}
+        ARCH: ${{ env.ARCH }}
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
         GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
       run: |
-        # Extract OS and arch from the matrix name (format: os-arch)
-        OS=$(echo "${{ matrix.job.name }}" | cut -d'-' -f1)
-        ARCH=$(echo "${{ matrix.job.name }}" | cut -d'-' -f2)
-        
         # Decode the GCP_SA_KEY secret and write the contents to a temporary file
         echo "$GCP_SA_KEY" | base64 --decode > gcp_sa_key.json
         # Authenticate to gcloud with the service account key
@@ -134,8 +143,8 @@ jobs:
         # Set your GCP project
         gcloud config set project $GCP_PROJECT_ID
         # Copy the built binary to version-specific folder in GCP bucket
-        gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS/$ARCH/sidecar.zip"
+        gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS_NAME/$ARCH/sidecar.zip"
         # Also update the latest version
-        gsutil cp sidecar.zip "gs://sidecar-bin/latest/$OS/$ARCH/sidecar.zip"
+        gsutil cp sidecar.zip "gs://sidecar-bin/latest/$OS_NAME/$ARCH/sidecar.zip"
         # Remove the service account key file
         rm gcp_sa_key.json

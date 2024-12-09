@@ -62,9 +62,15 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: ${{ matrix.job.os == 'windows-2019' && 'stable-x86_64-pc-windows-gnu' || 'stable' }}
+        toolchain: 1.79.0
         targets: ${{ matrix.job.target }}
         components: rust-src, rust-std
+
+    - name: Install GNU toolchain for aarch64-pc-windows-msvc
+      if: matrix.job.os == 'windows-2019'
+      shell: bash
+      run: |
+        rustup toolchain install stable-x86_64-pc-windows-gnu
 
     - name: Install cross for cross-compilation
       if: matrix.job.use-cross

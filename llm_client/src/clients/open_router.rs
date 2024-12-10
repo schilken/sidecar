@@ -12,6 +12,17 @@ use super::types::{
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+enum OpenRouterCacheType {
+    #[serde(rename = "ephemeral")]
+    Ephemeral,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OpenRouterCacheControl {
+    r#type: OpenRouterCacheType,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[serde(rename = "image_url")]
 struct OpenRouterImageSource {
@@ -29,7 +40,10 @@ pub struct OpenRouterRequestMessageToolCall {
 #[serde(tag = "type")]
 enum OpenRouterRequestMessageType {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        cache_control: Option<OpenRouterCacheControl>,
+    },
     #[serde(rename = "image_url")]
     Image { image_url: OpenRouterImageSource },
     #[serde(rename = "tool_result")]
@@ -41,7 +55,10 @@ enum OpenRouterRequestMessageType {
 
 impl OpenRouterRequestMessageType {
     pub fn text(message: String) -> Self {
-        Self::Text { text: message }
+        Self::Text {
+            text: message,
+            cache_control: None,
+        }
     }
 
     pub fn tool_return(tool_use_id: String, content: String) -> Self {
@@ -62,6 +79,19 @@ impl OpenRouterRequestMessageType {
                 ),
             },
         }
+    }
+
+    pub fn set_cache_control(mut self) -> Self {
+        if let Self::Text {
+            text: _,
+            ref mut cache_control,
+        } = self
+        {
+            *cache_control = Some(OpenRouterCacheControl {
+                r#type: OpenRouterCacheType::Ephemeral,
+            });
+        }
+        self
     }
 }
 
@@ -277,7 +307,17 @@ impl OpenRouterRequest {
                                 } else {
                                     let content = message.content();
                                     let images = message.images();
-                                    vec![OpenRouterRequestMessageType::text(content.to_owned())]
+
+                                    // enable cache point if its set, open-router requires
+                                    // this for anthropic models, we would need to toggle it
+                                    // for openai-models later on
+                                    let is_cache_enabled = message.is_cache_point();
+                                    let mut content_messaage =
+                                        OpenRouterRequestMessageType::text(content.to_owned());
+                                    if is_cache_enabled {
+                                        content_messaage = content_messaage.set_cache_control();
+                                    }
+                                    vec![content_messaage]
                                         .into_iter()
                                         .chain(images.into_iter().map(|image| {
                                             OpenRouterRequestMessageType::image(image)

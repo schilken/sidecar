@@ -164,5 +164,3 @@ jobs:
         gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS_NAME/$ARCH/sidecar.zip"
         # Also update the latest version
         gsutil cp sidecar.zip "gs://sidecar-bin/latest/$OS_NAME/$ARCH/sidecar.zip"
-        # Remove the service account key file
-        rm gcp_sa_key.json

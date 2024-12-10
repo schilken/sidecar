@@ -46,8 +46,8 @@ updateLatestVersion() {
   echo "Updating ${VERSION_PATH}/latest.json"
 
   # do not update the same version
-  if [[ -f "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json" ]]; then
-    CURRENT_VERSION=$( jq -r '.package_version' "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json" )
+  if [[ -f "${VERSION_PATH}/latest.json" ]]; then
+    CURRENT_VERSION=$( jq -r '.package_version' "${VERSION_PATH}/latest.json" )
     echo "CURRENT_VERSION: ${CURRENT_VERSION}"
 
     if [[ "${CURRENT_VERSION}" == "${CARGO_PKG_VERSION}" && "${FORCE_UPDATE}" != "true" ]]; then
@@ -56,13 +56,9 @@ updateLatestVersion() {
   fi
 
   echo "Generating ${VERSION_PATH}/latest.json"
-
-  mkdir -p "${VERSION_PATH}"
-
   generateJson
 
-  echo "${JSON_DATA}" > "${REPOSITORY_NAME}/${VERSION_PATH}/latest.json"
-
+  echo "${JSON_DATA}" > "${VERSION_PATH}/latest.json"
   echo "${JSON_DATA}"
 }
 
@@ -80,8 +76,6 @@ git remote add origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@${GH_HOST}/${V
 # update latest.json
 VERSION_PATH="sidecar/${OS_NAME}/${ARCH}"
 updateLatestVersion
-
-cd "${REPOSITORY_NAME}" || { echo "'${REPOSITORY_NAME}' dir not found"; exit 1; }
 
 git pull origin main # in case another build just pushed
 git add .

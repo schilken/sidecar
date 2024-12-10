@@ -64,13 +64,13 @@ jobs:
       with:
         toolchain: 1.79.0
         targets: ${{ matrix.job.target }}
-        components: rust-src, rust-std
+        components: rust-src
 
-    - name: Install GNU toolchain for Windows
-      if: matrix.job.os == 'windows-2019'
-      shell: bash
+    - name: Install target std library
+      if: matrix.job.target == 'aarch64-pc-windows-msvc'
       run: |
-        rustup toolchain install 1.79-x86_64-pc-windows-gnu
+        rustup target add aarch64-pc-windows-msvc
+        rustup component add rust-std-aarch64-pc-windows-msvc
 
     - name: Install cross for cross-compilation
       if: matrix.job.use-cross

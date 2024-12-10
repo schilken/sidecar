@@ -300,6 +300,26 @@ impl InferenceEngine {
                 .invoke_json_tool(tool_agent_input.clone())
                 .await;
             if tool_use_output.is_ok() {
+                // check if the result of running the tool use output is empty
+                if let Ok(tool_use_output) = tool_use_output.as_ref() {
+                    match tool_use_output {
+                        ToolUseAgentOutputWithTools::Success((tools, _input)) => {
+                            if tools.is_empty() {
+                                println!(
+                                    "{}",
+                                    format!("inference::enging::retrying_empty_tool_output").red()
+                                );
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                tool_retry_index = tool_retry_index + 1;
+                                if tool_retry_index >= max_tool_retry {
+                                    break;
+                                }
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 break;
             } else {
                 println!(

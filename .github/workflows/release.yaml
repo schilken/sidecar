@@ -38,8 +38,7 @@ jobs:
         python-version: '3.11'
 
     - name: Point gcloud SDK to Python
-      shell: bash
-      run: CLOUDSDK_PYTHON=${steps.setup-python.outputs.python-path} >> $env:GITHUB_ENV
+      run: echo "CLOUDSDK_PYTHON=${{ steps.setup-python.outputs.python-path }}" >> $GITHUB_ENV
 
     - name: Extract build target information
       shell: bash

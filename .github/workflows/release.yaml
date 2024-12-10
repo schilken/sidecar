@@ -85,6 +85,8 @@ jobs:
       run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
 
     - uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: ${{ matrix.job.target }}
 
     - name: Build binary
       shell: bash

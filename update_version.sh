@@ -57,7 +57,7 @@ updateLatestVersion() {
 
   echo "Generating ${VERSION_PATH}/latest.json"
 
-  mkdir -p "${REPOSITORY_NAME}/${VERSION_PATH}"
+  mkdir -p "${VERSION_PATH}"
 
   generateJson
 
@@ -78,7 +78,7 @@ git remote rm origin
 git remote add origin "https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@${GH_HOST}/${VERSIONS_REPOSITORY}.git" &> /dev/null
 
 # update latest.json
-VERSION_PATH="sidecar/${OS_NAME}/${ARCH}/latest.json"
+VERSION_PATH="sidecar/${OS_NAME}/${ARCH}"
 updateLatestVersion
 
 cd "${REPOSITORY_NAME}" || { echo "'${REPOSITORY_NAME}' dir not found"; exit 1; }
@@ -101,6 +101,13 @@ if [[ -n "${CHANGES}" ]]; then
   fi
 else
   echo "No changes"
+fi
+
+# for GH actions
+if [[ "${GITHUB_ENV}" ]]; then
+  echo "Writing version to GITHUB_ENV..."
+  echo "BINARY_VERSION_HASH=${BINARY_VERSION_HASH}" >> "${GITHUB_ENV}"
+  echo "CARGO_PKG_VERSION=${CARGO_PKG_VERSION}" >> "${GITHUB_ENV}"
 fi
 
 cd ..

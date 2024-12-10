@@ -153,16 +153,11 @@ jobs:
       env:
         OS_NAME: ${{ env.OS_NAME }}
         ARCH: ${{ env.ARCH }}
+        CARGO_PKG_VERSION: ${{ env.CARGO_PKG_VERSION }}
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
         GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
       run: |
-        # Decode the GCP_SA_KEY secret and write the contents to a temporary file
-        echo "$GCP_SA_KEY" | base64 --decode > gcp_sa_key.json
-        # Authenticate to gcloud with the service account key
-        gcloud auth activate-service-account --key-file=gcp_sa_key.json
-        # Set your GCP project
-        gcloud config set project $GCP_PROJECT_ID
         # Copy the built binary to version-specific folder in GCP bucket
         gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS_NAME/$ARCH/sidecar.zip"
         # Also update the latest version

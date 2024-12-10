@@ -159,8 +159,12 @@ jobs:
         GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
         GCP_BUCKET_NAME: ${{ secrets.GCP_BUCKET_NAME }}
         GCP_SA_KEY: ${{ secrets.GCP_SA_KEY }}
+      shell: bash
       run: |
+        SPECIFIC_VERSION_PATH="${CARGO_PKG_VERSION}/${OS_NAME}/${ARCH}/sidecar.zip"
+        LATEST_VERSION_PATH="latest/${OS_NAME}/${ARCH}/sidecar.zip"
+
         # Copy the built binary to version-specific folder in GCP bucket
-        gsutil cp sidecar.zip "gs://sidecar-bin/$CARGO_PKG_VERSION/$OS_NAME/$ARCH/sidecar.zip"
+        gsutil cp "./sidecar.zip" "gs://sidecar-bin/${SPECIFIC_VERSION_PATH}"
         # Also update the latest version
-        gsutil cp sidecar.zip "gs://sidecar-bin/latest/$OS_NAME/$ARCH/sidecar.zip"
+        gsutil cp "./sidecar.zip" "gs://sidecar-bin/${LATEST_VERSION_PATH}"

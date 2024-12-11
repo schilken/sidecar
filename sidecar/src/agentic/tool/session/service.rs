@@ -767,6 +767,8 @@ impl SessionService {
                 .create_new_exchange(session_id.to_owned(), message_properties.clone())
                 .await?;
 
+            println!("tool_exchange_id::({:?})", &tool_exchange_id);
+
             let cancellation_token = tokio_util::sync::CancellationToken::new();
 
             message_properties = message_properties
@@ -846,7 +848,7 @@ impl SessionService {
                         .send(UIEventWithID::tool_not_found(
                             session_id.to_owned(),
                             tool_exchange_id.to_owned(),
-                            failed_to_parse_output,
+                            "Failed to get tool output".to_owned(),
                         ));
                 }
                 Err(e) => {

@@ -2177,29 +2177,30 @@ The Github Issue we are trying to solve is:
         // we want to send a new event only when we are not going to ask for the followup questions
         // we might have generated a new exchange id over here if we are going to be working
         // on top of any tool which does not require user feedback
-        let exchange_id = if !matches!(tool_type, ToolType::AskFollowupQuestions)
-            && !matches!(tool_type, ToolType::AttemptCompletion)
-        {
-            let new_exchange_id = tool_box
-                .create_new_exchange(
-                    message_properties.root_request_id().to_owned(),
-                    message_properties.clone(),
-                )
-                .await?;
-            message_properties = message_properties.set_request_id(new_exchange_id.to_owned());
-            let session_id = message_properties.root_request_id().to_owned();
-            let exchange_id = message_properties.request_id_str().to_owned();
-            let _ = message_properties
-                .ui_sender()
-                .send(UIEventWithID::tool_output_type_found(
-                    session_id.to_owned(),
-                    exchange_id.to_owned(),
-                    tool_type.clone(),
-                ));
-            new_exchange_id
-        } else {
-            message_properties.request_id_str().to_owned()
-        };
+        // let exchange_id = if !matches!(tool_type, ToolType::AskFollowupQuestions)
+        //     && !matches!(tool_type, ToolType::AttemptCompletion)
+        // {
+        //     let new_exchange_id = tool_box
+        //         .create_new_exchange(
+        //             message_properties.root_request_id().to_owned(),
+        //             message_properties.clone(),
+        //         )
+        //         .await?;
+        //     message_properties = message_properties.set_request_id(new_exchange_id.to_owned());
+        //     let session_id = message_properties.root_request_id().to_owned();
+        //     let exchange_id = message_properties.request_id_str().to_owned();
+        //     let _ = message_properties
+        //         .ui_sender()
+        //         .send(UIEventWithID::tool_output_type_found(
+        //             session_id.to_owned(),
+        //             exchange_id.to_owned(),
+        //             tool_type.clone(),
+        //         ));
+        //     new_exchange_id
+        // } else {
+        //     message_properties.request_id_str().to_owned()
+        // };
+        let exchange_id = message_properties.request_id_str().to_owned();
         match tool_input_partial {
             ToolInputPartial::TestRunner(test_runner) => {
                 let editor_url = message_properties.editor_url().to_owned();

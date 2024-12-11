@@ -2172,7 +2172,7 @@ The Github Issue we are trying to solve is:
         original_user_message: String,
         is_test_generation: bool,
         is_swe_bench: bool,
-        mut message_properties: SymbolEventMessageProperties,
+        message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
         // we want to send a new event only when we are not going to ask for the followup questions
         // we might have generated a new exchange id over here if we are going to be working

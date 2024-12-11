@@ -966,22 +966,23 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             })
             .collect::<Vec<_>>();
 
-        // we want to modify 2 things here, the last user message and the one before
-        // should be cached as well
-        previous_messages.last_mut().map(|previous_message| {
-            if previous_message.is_human_message() {
-                previous_message.is_cache_point();
-            }
-        });
-        // also add a cache point to the second last message over here
-        if let Some(second_last_message) = previous_messages
+        // anthropic allows setting up to 4 cache points, we are going to be more
+        // lax here and set 3, since system_messgae takes 1 slot
+        let mut cache_points_set = 0;
+        let cache_points_allowed = 3;
+        previous_messages
             .iter_mut()
             .rev()
-            .skip(1)
-            .find(|msg| msg.is_human_message())
-        {
-            second_last_message.is_cache_point();
-        }
+            .into_iter()
+            .for_each(|message| {
+                if cache_points_set >= cache_points_allowed {
+                    return;
+                }
+                if message.is_human_message() {
+                    message.set_cache_point();
+                    cache_points_set = cache_points_set + 1;
+                }
+            });
         if previous_messages
             .last()
             .map(|last_message| last_message.is_human_message())

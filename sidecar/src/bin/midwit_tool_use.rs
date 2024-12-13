@@ -38,9 +38,11 @@ struct CliArgs {
     timeout: usize,
 
     /// Repository location
+    #[arg(long)]
     repo_location: PathBuf,
 
     /// Repository name (I am sorry for asking this)
+    #[arg(long)]
     repo_name: String,
 
     /// Anthropic api key

@@ -259,7 +259,6 @@ impl InferenceEngine {
             "linux".to_owned(),
             "bash".to_owned(),
             Some(search_tree.repo_name()),
-            false,
         );
 
         let session_messages = messages
@@ -441,7 +440,6 @@ impl InferenceEngine {
             "linux".to_owned(),
             "bash".to_owned(),
             Some(search_tree.repo_name()),
-            false,
         );
 
         let mut session_messages = messages

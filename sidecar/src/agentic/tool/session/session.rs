@@ -1,7 +1,7 @@
 //! We can create a new session over here and its composed of exchanges
 //! The exchanges can be made by the human or the agent
 
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -2167,7 +2167,6 @@ The Github Issue we are trying to solve is:
         tool_type: ToolType,
         tool_input_partial: ToolInputPartial,
         tool_box: Arc<ToolBox>,
-        should_stream_edits: bool,
         tool_agent: ToolUseAgent,
         original_user_message: String,
         is_test_generation: bool,
@@ -2295,7 +2294,7 @@ The Github Issue we are trying to solve is:
 
                 // if the file is very very large then we chunk it up and use search and replace
                 // on individual chunks instead
-                let updated_code = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
+                let _ = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
                     >= 1300
                     // if we are not in swe_bench mode, never try to be extra, go with
                     // the standard search and replace flow
@@ -2351,8 +2350,7 @@ The Github Issue we are trying to solve is:
                         None,
                         vec![], // previous_user_queries
                         None,
-                    )
-                    .set_should_stream_status(should_stream_edits);
+                    );
 
                     let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
 
@@ -2388,8 +2386,7 @@ The Github Issue we are trying to solve is:
                         None,
                         vec![], // previous_user_queries
                         None,
-                    )
-                    .set_should_stream_status(should_stream_edits);
+                    );
 
                     let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
 
@@ -2434,8 +2431,7 @@ This is part of the file which might not contain the method in full, if thats th
                         None,
                         vec![], // previous_user_queries
                         None,
-                    )
-                    .set_should_stream_status(should_stream_edits);
+                    );
 
                     let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
 
@@ -2454,57 +2450,6 @@ This is part of the file which might not contain the method in full, if thats th
                         )
                         .await? // big expectations but can also fail, we should handle it properly
                 };
-                // This code-block only ever hits for the swe-bench run and nothing else
-                // in the future we should create a tool for this, but this will help unblock us
-                if !should_stream_edits {
-                    // we want to update the whole file content with the new content over here
-                    // first we check if the file really exists on the fs, if it does not we create it
-                    if let Ok(false) = tokio::fs::try_exists(fs_file_path.to_owned()).await {
-                        tokio::fs::create_dir_all(
-                            Path::new(&fs_file_path).parent().expect("to exist"),
-                        )
-                        .await
-                        .expect("creating parent directory to work");
-                        tokio::fs::File::create(fs_file_path.to_owned())
-                            .await
-                            .expect("file creation to not fail");
-                    }
-                    let _ =
-                        tokio::fs::write(fs_file_path.to_owned(), updated_code.to_owned()).await;
-
-                    // we have the original file content and the updated code content
-                    // we want to generate a git-diff between the 2 and pass that to the LLM implicitly
-                    // since we do not have a recent-edits handle easily implemented in python mock editor
-                    // This is really bad but we are interested in testing out things for now (DO NOT COMMIT)
-                    let client = reqwest::Client::new();
-                    let original_content = &file_contents;
-                    let request_object = serde_json::json!({
-                        "original_content": original_content,
-                        "modified_content": updated_code,
-                        "fs_file_path": fs_file_path,
-                    });
-                    let response = client
-                        .post(message_properties.editor_url() + "/diff_generator")
-                        .body(serde_json::to_string(&request_object).expect("to work"))
-                        .send()
-                        .await
-                        .expect("to get a reply");
-                    #[derive(serde::Deserialize)]
-                    struct FileEditedResponseStruct {
-                        generated_diff: String,
-                    }
-                    let response: FileEditedResponseStruct =
-                        response.json().await.expect("to work");
-
-                    self = self.tool_output(
-                        &exchange_id,
-                        tool_type.clone(),
-                        format!(r#"I performed the edits which you asked for, here is the git diff for it:
-{}"#, response.generated_diff),
-                        UserContext::default()
-                    );
-                    return Ok(self);
-                }
 
                 // now that we have modified the file we can ask the editor for the git-diff of this file over here
                 // and we also have the previous state over here

@@ -2169,36 +2169,9 @@ The Github Issue we are trying to solve is:
         tool_box: Arc<ToolBox>,
         tool_agent: ToolUseAgent,
         original_user_message: String,
-        is_test_generation: bool,
-        is_swe_bench: bool,
+        root_directory: String,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
-        // we want to send a new event only when we are not going to ask for the followup questions
-        // we might have generated a new exchange id over here if we are going to be working
-        // on top of any tool which does not require user feedback
-        // let exchange_id = if !matches!(tool_type, ToolType::AskFollowupQuestions)
-        //     && !matches!(tool_type, ToolType::AttemptCompletion)
-        // {
-        //     let new_exchange_id = tool_box
-        //         .create_new_exchange(
-        //             message_properties.root_request_id().to_owned(),
-        //             message_properties.clone(),
-        //         )
-        //         .await?;
-        //     message_properties = message_properties.set_request_id(new_exchange_id.to_owned());
-        //     let session_id = message_properties.root_request_id().to_owned();
-        //     let exchange_id = message_properties.request_id_str().to_owned();
-        //     let _ = message_properties
-        //         .ui_sender()
-        //         .send(UIEventWithID::tool_output_type_found(
-        //             session_id.to_owned(),
-        //             exchange_id.to_owned(),
-        //             tool_type.clone(),
-        //         ));
-        //     new_exchange_id
-        // } else {
-        //     message_properties.request_id_str().to_owned()
-        // };
         let exchange_id = message_properties.request_id_str().to_owned();
         match tool_input_partial {
             ToolInputPartial::TestRunner(test_runner) => {
@@ -2278,7 +2251,15 @@ The Github Issue we are trying to solve is:
                 // figure out what to do over here
             }
             ToolInputPartial::CodeEditing(code_editing) => {
-                let fs_file_path = code_editing.fs_file_path().to_owned();
+                let mut fs_file_path = code_editing.fs_file_path().to_owned();
+                if !std::path::Path::new(&fs_file_path).is_absolute() {
+                    // we need to join the file path here with the root directory
+                    println!("fixing relative file path");
+                    fs_file_path = std::path::Path::new(&root_directory)
+                        .join(fs_file_path)
+                        .to_string_lossy()
+                        .to_string();
+                }
                 println!("Code editing: {}", fs_file_path);
                 let file_contents = tool_box
                     .file_open(fs_file_path.to_owned(), message_properties.clone())
@@ -2294,123 +2275,7 @@ The Github Issue we are trying to solve is:
 
                 // if the file is very very large then we chunk it up and use search and replace
                 // on individual chunks instead
-                let _ = if file_contents.lines().into_iter().collect::<Vec<_>>().len()
-                    >= 1300
-                    // if we are not in swe_bench mode, never try to be extra, go with
-                    // the standard search and replace flow
-                    && !is_swe_bench
-                {
-                    let first_part_lines = file_contents
-                        .to_owned()
-                        .lines()
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(idx, line)| {
-                            if idx <= 750 {
-                                Some(line.to_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let second_part_lines = file_contents
-                        .to_owned()
-                        .lines()
-                        .into_iter()
-                        .enumerate()
-                        .filter_map(|(idx, line)| {
-                            if idx > 750 {
-                                Some(line.to_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    let first_range =
-                        Range::new(Position::new(0, 0, 0), Position::new(10_000, 0, 0));
-                    let second_range =
-                        Range::new(Position::new(0, 0, 0), Position::new(10_000, 0, 0));
-
-                    // First half of the file has been edited
-                    let symbol_to_edit = SymbolToEdit::new(
-                        fs_file_path.to_owned(),
-                        first_range,
-                        fs_file_path.to_owned(),
-                        vec![instruction.clone()],
-                        false,
-                        false, // is_new
-                        false,
-                        "".to_owned(),
-                        None,
-                        false,
-                        None,
-                        false,
-                        None,
-                        vec![], // previous_user_queries
-                        None,
-                    );
-
-                    let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
-
-                    let first_part_edited = tool_box
-                        .code_editing_with_search_and_replace(
-                            &symbol_to_edit,
-                            &fs_file_path,
-                            &first_part_lines,
-                            &first_range,
-                            "".to_owned(),
-                            instruction.clone(),
-                            &symbol_identifier,
-                            None,
-                            None,
-                            message_properties.clone(),
-                        )
-                        .await?; // big expectations but can also fail, we should handle it properly
-
-                    // Editing second half of the file
-                    let symbol_to_edit = SymbolToEdit::new(
-                        fs_file_path.to_owned(),
-                        second_range,
-                        fs_file_path.to_owned(),
-                        vec![instruction.clone()],
-                        false,
-                        false, // is_new
-                        false,
-                        "".to_owned(),
-                        None,
-                        false,
-                        None,
-                        false,
-                        None,
-                        vec![], // previous_user_queries
-                        None,
-                    );
-
-                    let symbol_identifier = SymbolIdentifier::new_symbol(&fs_file_path);
-
-                    let second_part_edited = tool_box
-                        .code_editing_with_search_and_replace(
-                            &symbol_to_edit,
-                            &fs_file_path,
-                            &second_part_lines,
-                            &second_range,
-                            "".to_owned(),
-                            format!(r#"{}
-This is part of the file which might not contain the method in full, if thats the case do not generate any edits"#, instruction.clone()),
-                            &symbol_identifier,
-                            None,
-                            None,
-                            message_properties.clone(),
-                        )
-                        .await?; // big expectations but can also fail, we should handle it properly
-                    format!(
-                        r#"{}
-{}"#,
-                        first_part_edited, second_part_edited
-                    )
-                } else {
+                let _ = {
                     let default_range =
                     // very large end position
                     Range::new(Position::new(0, 0, 0), Position::new(10_000, 0, 0));

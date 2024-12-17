@@ -704,62 +704,6 @@ impl Session {
             .find(|exchange| &exchange.exchange_id == exchange_id)
     }
 
-    fn decay_messages(
-        &self,
-        // both of these have the same length
-        exchanges: &[Exchange],
-        mut conversation_messages: Vec<SessionChatMessage>,
-    ) -> Vec<SessionChatMessage> {
-        // The algorithm we use for decay is the following:
-        // - When using any tool which is of map type query -> List<Results>
-        // we keep the tool output for the map tool type as long as there is not
-        // a mutation (code_edit) or we use another map type tool
-        // - This allows us to keep the token usage small while still retaining
-        let mut previous_map_tool_indices = vec![];
-        for (idx, exchange) in exchanges.into_iter().enumerate() {
-            match &exchange.exchange_type {
-                ExchangeType::AgentChat(agent_chat) => match &agent_chat.reply {
-                    ExchangeReplyAgent::Tool(tool_input) => {
-                        let input_tool_type = &tool_input.tool_type;
-                        // We are have an input tool over here
-                        // map_tool_type || mutation_tool_type
-                        // [T T T T M I I C T M I I I M M T T]
-                        // if we get a C which is code-edit
-                        // then we remove the output of the previous map test
-                        // and if we have multiple M steps we remove all of them
-                        // until we get a C (code-edit)
-                        if input_tool_type.is_map_type() {
-                            previous_map_tool_indices.push(idx);
-                        }
-                        if input_tool_type.is_code_edit_type() {
-                            // rest all the running map types over here sinc we
-                            // have started started code editing
-                            previous_map_tool_indices.into_iter().for_each(
-                                |map_tool_input_index| {
-                                    // the tool output is generally immediately
-                                    // after the current tool input index
-                                    let role = conversation_messages[map_tool_input_index + 1]
-                                        .role()
-                                        .clone();
-                                    conversation_messages[map_tool_input_index + 1] =
-                                        SessionChatMessage::new(
-                                            role,
-                                            "... truncated output".to_owned(),
-                                            vec![],
-                                        );
-                                },
-                            );
-                            previous_map_tool_indices = vec![];
-                        }
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-        }
-        conversation_messages
-    }
-
     /// Finds the exchange we are interested in and mutates the previous queries
     /// and the current query
     pub fn plan_iteration(
@@ -2110,65 +2054,11 @@ impl Session {
         self
     }
 
-    async fn handle_critique(
-        mut self,
-        tool_agent: ToolUseAgent,
-        tool_box: Arc<ToolBox>,
-        original_user_message: String,
-        message_properties: SymbolEventMessageProperties,
-    ) -> Result<Self, SymbolError> {
-        // figure out what to do over here given the state of the session
-        let mut converted_messages = vec![];
-        for previous_message in self.exchanges.iter() {
-            converted_messages.push(
-                previous_message
-                    .to_conversation_message(tool_box.tools().clone())
-                    .await,
-            );
-        }
-
-        // decay the content of the messages depending on the decay condition
-        // so we can keep the context smaller and more relevant
-        converted_messages = self.decay_messages(self.exchanges.as_slice(), converted_messages);
-        let input =
-            ToolUseAgentInput::new(converted_messages, vec![], None, message_properties.clone());
-        let critique = tool_agent.invoke_critique(input).await?;
-        // reset all the exchanges since we are going to start a new
-        println!("session::handle_critique::starting_new");
-        let exchange_message = format!(
-            r#"When trying to solve this issue before we ran into a wrong approach, the patch was reviewed by a senior engineer who had the following helpful feedback to share:
-{}
-            
-We have also reset the repository state and discarded all the changes which you did before. This is to help you start on a fresh plate.
-
-The Github Issue we are trying to solve is:
-{original_user_message}"#,
-            critique
-        );
-        self.exchanges = vec![];
-        self.exchanges.push(Exchange::human_chat(
-            "critique".to_owned(),
-            exchange_message,
-            UserContext::default(),
-            self.project_labels.to_vec(),
-            self.repo_ref.clone(),
-        ));
-
-        // reset the repository status by running git stash
-        let _ = tool_box
-            .use_terminal_command("git stash", message_properties)
-            .await;
-        self.save_to_storage().await?;
-        Ok(self)
-    }
-
     pub async fn invoke_tool(
         mut self,
         tool_type: ToolType,
         tool_input_partial: ToolInputPartial,
         tool_box: Arc<ToolBox>,
-        tool_agent: ToolUseAgent,
-        original_user_message: String,
         root_directory: String,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
@@ -2220,24 +2110,6 @@ The Github Issue we are trying to solve is:
                     formatted_output, // truncated
                     UserContext::default(),
                 );
-
-                // The test running is a terminal condition, if we have an exit code 0
-                // we are good, otherwise the cirtique will take a look
-                // we only do this when we are not generating test cases
-                if !is_test_generation {
-                    if test_runner_output.exit_code() != 0 {
-                        return self
-                            .handle_critique(
-                                tool_agent,
-                                tool_box,
-                                original_user_message,
-                                message_properties,
-                            )
-                            .await;
-                    } else if test_runner_output.exit_code() == 0 {
-                        return Err(SymbolError::TestCaseIsPassing);
-                    }
-                }
             }
             ToolInputPartial::AskFollowupQuestions(_followup_question) => {
                 // this waits for the user-feedback so we do not need to react or

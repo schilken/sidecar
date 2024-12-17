@@ -399,7 +399,7 @@ impl SessionService {
         // we should ideally get this information from the vscode-server side setting
         let tool_agent = ToolUseAgent::new(
             llm_broker.clone(),
-            root_directory,
+            root_directory.to_owned(),
             std::env::consts::OS.to_owned(),
             shell.to_owned(),
             Some(repo_name),
@@ -463,8 +463,6 @@ impl SessionService {
                             tool_type.clone(),
                             tool_input_partial,
                             tool_box.clone(),
-                            tool_agent.clone(),
-                            user_message.to_owned(),
                             root_directory.to_owned(),
                             message_properties.clone(),
                         )
@@ -562,7 +560,7 @@ impl SessionService {
         // we should ideally get this information from the vscode-server side setting
         let tool_agent = ToolUseAgent::new(
             llm_broker.clone(),
-            root_directory,
+            root_directory.to_owned(),
             std::env::consts::OS.to_owned(),
             shell.to_owned(),
             None,
@@ -628,8 +626,6 @@ impl SessionService {
                             tool_type.clone(),
                             tool_input_partial,
                             tool_box.clone(),
-                            tool_agent.clone(),
-                            user_message.to_owned(),
                             root_directory.to_owned(),
                             message_properties.clone(),
                         )

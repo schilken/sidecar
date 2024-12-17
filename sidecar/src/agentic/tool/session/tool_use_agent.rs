@@ -621,6 +621,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             self.system_message_for_swe_bench_json_mode(&repo_name)
         })
         .insert_tools(input.tools);
+
         // grab the previous messages as well
         let llm_properties = input
             .symbol_event_message_properties

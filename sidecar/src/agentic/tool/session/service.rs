@@ -463,7 +463,6 @@ impl SessionService {
                             tool_type.clone(),
                             tool_input_partial,
                             tool_box.clone(),
-                            false,
                             tool_agent.clone(),
                             user_message.to_owned(),
                             false,
@@ -630,7 +629,6 @@ impl SessionService {
                             tool_type.clone(),
                             tool_input_partial,
                             tool_box.clone(),
-                            true,
                             tool_agent.clone(),
                             user_message.to_owned(),
                             false, // is not part of test genertaion

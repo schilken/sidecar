@@ -1,7 +1,7 @@
 //! We can create a new session over here and its composed of exchanges
 //! The exchanges can be made by the human or the agent
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
@@ -24,7 +24,6 @@ use crate::{
             ui_event::UIEventWithID,
         },
         tool::{
-            broker::ToolBroker,
             helpers::diff_recent_changes::DiffFileContent,
             input::{ToolInput, ToolInputPartial},
             lsp::{
@@ -37,6 +36,7 @@ use crate::{
             },
             r#type::{Tool, ToolType},
             repo_map::generator::RepoMapGeneratorRequest,
+            session::tool_use_agent::{ToolUseAgentInputOnlyTools, ToolUseAgentOutputWithTools},
             terminal::terminal::TerminalInput,
             test_runner::runner::TestRunnerRequest,
         },
@@ -47,10 +47,21 @@ use crate::{
 };
 
 use super::{
-    chat::{SessionChatClientRequest, SessionChatMessage, SessionChatMessageImage},
+    chat::{
+        SessionChatClientRequest, SessionChatMessage, SessionChatMessageImage,
+        SessionChatToolReturn, SessionChatToolUse,
+    },
     hot_streak::SessionHotStreakRequest,
     tool_use_agent::{ToolUseAgent, ToolUseAgentInput, ToolUseAgentOutput},
 };
+
+#[derive(Debug)]
+struct ToolExecutionOutput {
+    message: String,
+    thinking: Option<String>,
+    expect_correction: bool,
+    summary: Option<String>,
+}
 
 #[derive(Debug)]
 pub enum AgentToolUseOutput {
@@ -156,6 +167,7 @@ pub struct ExchangeTypeToolOutput {
     output: String,
     exchange_id: String,
     user_context: UserContext,
+    tool_use_id: String,
 }
 
 impl ExchangeTypeToolOutput {
@@ -164,12 +176,14 @@ impl ExchangeTypeToolOutput {
         output: String,
         exchange_id: String,
         user_context: UserContext,
+        tool_use_id: String,
     ) -> Self {
         Self {
             tool_type,
             output,
             exchange_id,
             user_context,
+            tool_use_id,
         }
     }
 }
@@ -435,6 +449,7 @@ impl Exchange {
         tool_type: ToolType,
         output: String,
         user_context: UserContext,
+        tool_use_id: String,
     ) -> Self {
         Self {
             exchange_id: exchange_id.to_owned(),
@@ -443,6 +458,7 @@ impl Exchange {
                 output,
                 exchange_id.clone(),
                 user_context,
+                tool_use_id,
             )),
             exchange_state: ExchangeState::Running,
         }
@@ -487,7 +503,7 @@ impl Exchange {
     ///
     /// We can have consecutive human messages now on every API so this is no
     /// longer a big worry
-    async fn to_conversation_message(&self, _tool_broker: Arc<ToolBroker>) -> SessionChatMessage {
+    async fn to_conversation_message(&self, is_json_mode: bool) -> SessionChatMessage {
         match &self.exchange_type {
             ExchangeType::HumanChat(ref chat_message) => {
                 // TODO(skcd): Figure out caching etc later on
@@ -577,29 +593,69 @@ impl Exchange {
                         }
                     }
                     ExchangeReplyAgent::Tool(tool_input) => {
-                        let tool_input_parameters = &tool_input.tool_input_partial;
-                        let thinking = &tool_input.thinking;
-                        SessionChatMessage::assistant(
-                            format!(
-                                r#"<thinking>
-{thinking}
-</thinking>
-{}"#,
-                                tool_input_parameters.to_string()
-                            ),
-                            vec![],
-                        )
+                        if is_json_mode {
+                            let tool_input_parameters =
+                                &tool_input.tool_input_partial.to_json_value();
+                            match tool_input_parameters {
+                                Some(schema) => {
+                                    // TODO(skcd): Figure out if the thinking here is in proper tags
+                                    SessionChatMessage::assistant(
+                                        tool_input.thinking.to_owned(),
+                                        vec![],
+                                    )
+                                    .insert_tool_use(
+                                        SessionChatToolUse::new(
+                                            tool_input
+                                                .tool_input_partial
+                                                .to_tool_type()
+                                                .to_string(),
+                                            tool_input.tool_use_id.to_owned(),
+                                            schema.clone(),
+                                        ),
+                                    )
+                                }
+                                None => SessionChatMessage::assistant(
+                                    tool_input.tool_input_partial.to_string(),
+                                    vec![],
+                                ),
+                            }
+                        } else {
+                            let tool_input_parameters = &tool_input.tool_input_partial;
+                            let thinking = &tool_input.thinking;
+                            SessionChatMessage::assistant(
+                                format!(
+                                    r#"<thinking>
+    {thinking}
+    </thinking>
+    {}"#,
+                                    tool_input_parameters.to_string()
+                                ),
+                                vec![],
+                            )
+                        }
                     }
                 }
             }
-            ExchangeType::ToolOutput(ref tool_output) => SessionChatMessage::user(
-                format!(
-                    "Tool Output ({}): {}",
-                    tool_output.tool_type.to_string(),
-                    tool_output.output,
-                ),
-                vec![],
-            ),
+            ExchangeType::ToolOutput(ref tool_output) => {
+                if is_json_mode {
+                    SessionChatMessage::user("".to_owned(), vec![]).insert_tool_return_value(
+                        SessionChatToolReturn::new(
+                            tool_output.tool_use_id.to_owned(),
+                            tool_output.tool_type.to_string(),
+                            tool_output.output.to_owned(),
+                        ),
+                    )
+                } else {
+                    SessionChatMessage::user(
+                        format!(
+                            "Tool Output ({}): {}",
+                            tool_output.tool_type.to_string(),
+                            tool_output.output,
+                        ),
+                        vec![],
+                    )
+                }
+            }
             ExchangeType::Plan(ref plan) => {
                 let user_query = &plan.query;
                 SessionChatMessage::user(
@@ -822,12 +878,18 @@ impl Session {
         tool_type: ToolType,
         output: String,
         user_context: UserContext,
+        tool_use_id: String,
     ) -> Self {
         self.global_running_user_context = self
             .global_running_user_context
             .merge_user_context(user_context.clone());
-        let exchange =
-            Exchange::tool_output(exchange_id.to_owned(), tool_type, output, user_context);
+        let exchange = Exchange::tool_output(
+            exchange_id.to_owned(),
+            tool_type,
+            output,
+            user_context,
+            tool_use_id,
+        );
         self.exchanges.push(exchange);
         self
     }
@@ -1035,6 +1097,128 @@ impl Session {
         Ok(self)
     }
 
+    /// TODO(skcd): Figure out how to support this properly
+    pub async fn get_tool_to_use_json(
+        mut self,
+        tool_box: Arc<ToolBox>,
+        excahnge_id: String,
+        parent_exchange_id: String,
+        tool_use_agent: ToolUseAgent,
+        message_properties: SymbolEventMessageProperties,
+    ) -> Result<AgentToolUseOutput, SymbolError> {
+        let mut convereted_messages = vec![];
+        for previous_message in self.exchanges.iter() {
+            convereted_messages.push(previous_message.to_conversation_message(true).await);
+        }
+
+        // grab the terminal output if anything is present and pass it as part of the
+        // agent input
+        let pending_spawned_process_output = tool_box
+            .grab_pending_subprocess_output(message_properties.clone())
+            .await?;
+
+        let tool_agent_input = ToolUseAgentInputOnlyTools::new(
+            convereted_messages,
+            self.tools
+                .into_iter()
+                .filter_map(|tool_type| tool_box.tools().get_tool_json(&tool_type))
+                .collect(),
+            "".to_owned(),
+            true,
+            pending_spawned_process_output,
+            message_properties.clone(),
+        );
+
+        // have a retry logic here which tries hard to make sure there are no errors
+        // when creating the tool which needs to be used
+        let mut tool_retry_index = 0;
+        // we can try a max of 3 times before giving up
+        let max_tool_retry = 3;
+
+        let mut tool_use_output: Result<ToolUseAgentOutputWithTools, SymbolError>;
+        loop {
+            tool_use_output = tool_use_agent
+                .invoke_json_tool_use(tool_agent_input.clone())
+                .await;
+            if tool_use_output.is_ok() {
+                // check if the result of running the tool use output is empty
+                if let Ok(tool_use_output) = tool_use_output.as_ref() {
+                    match tool_use_output {
+                        ToolUseAgentOutputWithTools::Success((tools, _input)) => {
+                            if tools.is_empty() {
+                                println!(
+                                    "{}",
+                                    format!("inference::enging::retrying_empty_tool_output")
+                                );
+                                tokio::time::sleep(Duration::from_secs(1)).await;
+                                tool_retry_index = tool_retry_index + 1;
+                                if tool_retry_index >= max_tool_retry {
+                                    break;
+                                }
+                                continue;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                break;
+            } else {
+                println!(
+                    "{}",
+                    format!("inference::engine::retrying_tool_call::erroredbefore")
+                );
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                // just give it a plain retry and call it a day
+                tool_retry_index = tool_retry_index + 1;
+            }
+            if tool_retry_index >= max_tool_retry {
+                break;
+            }
+        }
+
+        // The real problem here is how do we show the feedback to the user over here
+        // we were previously sending back feedback about the tool parameters which we found
+        // what should we do now?
+        // TODO(skcd): Figure out how the data passing here will work
+        match tool_use_output {
+            Ok(tool_use_parameters) => match tool_use_parameters {
+                ToolUseAgentOutputWithTools::Success((tool_input_partial, _thinking)) => {
+                    if tool_input_partial.is_empty() {}
+                }
+                ToolUseAgentOutputWithTools::Failure(_thinking) => {}
+            },
+            Err(e) => {}
+        }
+
+        todo!()
+    }
+
+    /// Executes the tool and generates the output over here to use from the tool
+    fn execute_tool_and_generate_observation(
+        &self,
+        tool_input_partial: ToolInputPartial,
+        thinking: String,
+        tool_box: Arc<ToolBox>,
+        message_properties: SymbolEventMessageProperties,
+    ) -> Result<ToolExecutionOutput, SymbolError> {
+        let tool_execution_output = match tool_input_partial {
+            ToolInputPartial::AskFollowupQuestions(followup_question) => {}
+            ToolInputPartial::AttemptCompletion(attempt_completion) => {}
+            ToolInputPartial::CodeEditing(code_editing) => {}
+            ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {}
+            ToolInputPartial::LSPDiagnostics(lsp_diagnostics) => {}
+            ToolInputPartial::ListFiles(list_files) => {}
+            ToolInputPartial::OpenFile(open_files) => {}
+            ToolInputPartial::RepoMapGeneration(repo_map_generation) => {}
+            ToolInputPartial::SearchFileContentWithRegex(search_with_regex) => {}
+            ToolInputPartial::TerminalCommand(terminal_command) => {}
+            ToolInputPartial::TestRunner(_) => {
+                todo!("test runner command is not supported")
+            }
+        };
+        todo!("figure out how to implement each of these")
+    }
+
     pub async fn get_tool_to_use(
         mut self,
         tool_box: Arc<ToolBox>,
@@ -1046,11 +1230,7 @@ impl Session {
         // figure out what to do over here given the state of the session
         let mut converted_messages = vec![];
         for previous_message in self.exchanges.iter() {
-            converted_messages.push(
-                previous_message
-                    .to_conversation_message(tool_box.tools().clone())
-                    .await,
-            );
+            converted_messages.push(previous_message.to_conversation_message(false).await);
         }
 
         // decay the content of the messages depending on the decay condition
@@ -1189,11 +1369,7 @@ impl Session {
         // reply to
         let mut converted_messages = vec![];
         for previous_message in self.exchanges.iter() {
-            converted_messages.push(
-                previous_message
-                    .to_conversation_message(tool_box.tools().clone())
-                    .await,
-            );
+            converted_messages.push(previous_message.to_conversation_message(false).await);
         }
 
         let exchange_id = message_properties.request_id_str().to_owned();
@@ -1428,11 +1604,7 @@ impl Session {
             // reply to
             let mut converted_messages = vec![];
             for previous_message in self.exchanges.iter() {
-                converted_messages.push(
-                    previous_message
-                        .to_conversation_message(tool_box.tools().clone())
-                        .await,
-                );
+                converted_messages.push(previous_message.to_conversation_message(false).await);
             }
             let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
             let mut stream_receiver =
@@ -1744,11 +1916,7 @@ impl Session {
         {
             let mut converted_messages = vec![];
             for previous_message in self.exchanges.iter() {
-                converted_messages.push(
-                    previous_message
-                        .to_conversation_message(tool_box.tools().clone())
-                        .await,
-                );
+                converted_messages.push(previous_message.to_conversation_message(false).await);
             }
             // send a message over that the inference will start in a bit
             let _ = message_properties
@@ -1894,11 +2062,7 @@ impl Session {
 
         let mut converted_messages = vec![];
         for previous_message in self.exchanges.iter() {
-            converted_messages.push(
-                previous_message
-                    .to_conversation_message(tool_box.tools().clone())
-                    .await,
-            );
+            converted_messages.push(previous_message.to_conversation_message(false).await);
         }
         let (diagnostics, mut extra_variables) = tool_box
             .grab_workspace_diagnostics(message_properties.clone())
@@ -2117,6 +2281,7 @@ impl Session {
                     tool_type.clone(),
                     formatted_output, // truncated
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::AskFollowupQuestions(_followup_question) => {
@@ -2225,6 +2390,7 @@ impl Session {
                         diff_changes.l1_changes()
                     ),
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::LSPDiagnostics(diagnostics) => {
@@ -2265,6 +2431,7 @@ impl Session {
                     tool_type.clone(),
                     formatted_diagnostics,
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::ListFiles(list_files) => {
@@ -2298,6 +2465,7 @@ impl Session {
                     tool_type.clone(),
                     response,
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::OpenFile(open_file) => {
@@ -2327,6 +2495,7 @@ impl Session {
                     tool_type.clone(),
                     response,
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::SearchFileContentWithRegex(search_file) => {
@@ -2360,6 +2529,7 @@ impl Session {
                     tool_type.clone(),
                     response.to_owned(),
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::TerminalCommand(terminal_command) => {
@@ -2389,6 +2559,7 @@ impl Session {
                     tool_type.clone(),
                     output,
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::RepoMapGeneration(repo_map_request) => {
@@ -2422,6 +2593,7 @@ impl Session {
                     tool_type.clone(),
                     repo_map_str.to_owned(),
                     UserContext::default(),
+                    exchange_id.to_owned(),
                 );
             }
             ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {

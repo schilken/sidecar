@@ -133,51 +133,6 @@ impl ToolUseAgent {
         }
     }
 
-    fn system_message_for_critique(&self, _context: &ToolUseAgentInput, repo_name: &str) -> String {
-        format!(
-            r#"You are an expert software engineer who is an expert at {repo_name} and are reviewing the work of another junior engineer.
-Your goal is to faithfully represent the assumptions of the junior engineer and hypothesize about how it lead to failure.
-The junior engineer is looking for an objective and scientific debrief that will help them attemp a more accurate solution next time.
-The problem is a Github Issue on {repo_name}
-===
-
-## INPUT PROVIDED
-- You will be provided with a very clear list of the steps which the junior engineer took.
-- The junior engineer is very literal with the steps they have taken and they also show you the thinking before taking an action.
-- At the very end you will also see the Test Output which shows the failing stack trace. Use this to inform your critique.
-
-## OUTPUT REQUIRED
-- You have to give feedback to the junior engineer which they will take to heart and follow to the letter.
-- Be short and concise in your feedback and point out the wrong assumptions they might have made.
-- You are an expert and the junior engineer wants the feedback from you, so please be thorough with your feedback so they are able to solve the Github Issue.
-- You are never to tell the junior engineer the final solution, but guide them towards the right answer by challenging their assumptions and any wrong conclusions they might have drawn."#
-        )
-    }
-
-    fn user_message_for_critique(&self, context: &ToolUseAgentInput) -> String {
-        context
-            .session_messages
-            .iter()
-            .map(|session_message| match session_message.role() {
-                SessionChatRole::User => {
-                    format!(
-                        r#"Tool output:
-{}"#,
-                        session_message.message().to_owned()
-                    )
-                }
-                SessionChatRole::Assistant => {
-                    format!(
-                        r#"Tool Input:
-{}"#,
-                        session_message.message().to_owned()
-                    )
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-
     fn system_message_midwit_json_mode(&self, repo_name: &str, problem_statement: &str) -> String {
         let working_directory = self.working_directory.to_owned();
         format!(
@@ -551,60 +506,6 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
 4. Once you've completed the user's task, you must use the attempt_completion tool to present the result of the task to the user. You may also provide a CLI command to showcase the result of your task; this can be particularly useful for web development tasks, where you can run e.g. \`open index.html\` to show the website you've built.
 5. The user may provide feedback, which you can use to make improvements and try again. But DO NOT continue in pointless back and forth conversations, i.e. don't end your responses with questions or offers for further assistance."#
         )
-    }
-
-    pub async fn invoke_critique(&self, input: ToolUseAgentInput) -> Result<String, SymbolError> {
-        let system_message = LLMClientMessage::system(
-            if let Some(repo_name) = self.swe_bench_repo_name.as_ref() {
-                self.system_message_for_critique(&input, repo_name)
-            } else {
-                panic!("We should not be hitting this branch condition at all, something went wrong upstream")
-            },
-        );
-        let user_message = LLMClientMessage::user(self.user_message_for_critique(&input));
-        let final_messages = vec![system_message, user_message];
-        let llm_properties = input
-            .symbol_event_message_properties
-            .llm_properties()
-            .clone();
-        let root_request_id = input
-            .symbol_event_message_properties
-            .root_request_id()
-            .to_owned();
-        let cancellation_token = input.symbol_event_message_properties.cancellation_token();
-        let cloned_llm_client = self.llm_client.clone();
-        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
-        let cloned_root_request_id = root_request_id.to_owned();
-        let response = run_with_cancellation(
-            cancellation_token.clone(),
-            tokio::spawn(async move {
-                cloned_llm_client
-                    .stream_completion(
-                        llm_properties.api_key().clone(),
-                        LLMClientCompletionRequest::new(
-                            llm_properties.llm().clone(),
-                            final_messages,
-                            0.2,
-                            None,
-                        ),
-                        llm_properties.provider().clone(),
-                        vec![
-                            ("event_type".to_owned(), "critique".to_owned()),
-                            ("root_id".to_owned(), cloned_root_request_id),
-                        ]
-                        .into_iter()
-                        .collect(),
-                        sender,
-                    )
-                    .await
-            }),
-        )
-        .await;
-        match response {
-            Some(Ok(Ok(response))) => Ok(response),
-            // fix the error variant over here later on
-            _ => Err(SymbolError::SnippetNotFound),
-        }
     }
 
     /// TODO(skcd): This is a special call we are using only for anthropic and nothing

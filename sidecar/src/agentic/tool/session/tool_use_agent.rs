@@ -422,7 +422,17 @@ bin/main.rs
 </fs_file_path>
 </read_file>
 
-Always adhere to this format for the tool use to ensure proper parsing and execution from the tool use.
+Another example:
+<list_files>
+<path>
+.
+</path>
+<recursive>
+true
+</recursive>
+</list_files>
+
+Always adhere to this format for the tool use to ensure proper parsing and execution from the tool use. And NOTICE HOW ALL XML TAGS ARE ON A NEW LINE. This is important to not break parsing.
 
 # Tools
 

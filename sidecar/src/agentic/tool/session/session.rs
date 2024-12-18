@@ -201,6 +201,9 @@ pub struct ExchangeReplyAgentTool {
     // for now, I am leaving things here until I can come up with a proper API for that
     tool_input_partial: ToolInputPartial,
     thinking: String,
+    // The tool use id which we need to send back along with the tool parameters
+    // if they are present
+    tool_use_id: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -251,12 +254,14 @@ impl ExchangeTypeAgent {
         tool_type: ToolType,
         thinking: String,
         parent_exchange_id: String,
+        tool_use_id: String,
     ) -> Self {
         Self {
             reply: ExchangeReplyAgent::Tool(ExchangeReplyAgentTool {
                 tool_type,
                 tool_input_partial,
                 thinking,
+                tool_use_id,
             }),
             parent_exchange_id,
         }
@@ -410,6 +415,7 @@ impl Exchange {
         tool_input: ToolInputPartial,
         tool_type: ToolType,
         thinking: String,
+        tool_use_id: String,
     ) -> Self {
         Self {
             exchange_id,
@@ -418,6 +424,7 @@ impl Exchange {
                 tool_type,
                 thinking,
                 parent_exchange_id,
+                tool_use_id,
             )),
             exchange_state: ExchangeState::Running,
         }
@@ -1085,10 +1092,11 @@ impl Session {
                 let tool_type = tool_input_partial.to_tool_type();
                 self.exchanges.push(Exchange::agent_tool_use(
                     parent_exchange_id,
-                    exchange_id,
+                    exchange_id.to_owned(),
                     tool_input_partial.clone(),
                     tool_type,
                     thinking,
+                    exchange_id,
                 ));
                 Ok(AgentToolUseOutput::Success((tool_input_partial, self)))
             }

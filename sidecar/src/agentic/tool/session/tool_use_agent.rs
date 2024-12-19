@@ -1215,6 +1215,20 @@ pub struct ToolParameters {
     pub(crate) field_content_delta: String,
 }
 
+impl ToolParameters {
+    pub fn new(
+        field_name: String,
+        field_content_up_until_now: String,
+        field_content_delta: String,
+    ) -> Self {
+        Self {
+            field_name,
+            field_content_delta,
+            field_content_up_until_now,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum ToolBlockEvent {
     ThinkingFull(String),

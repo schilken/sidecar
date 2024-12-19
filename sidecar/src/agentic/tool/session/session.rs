@@ -36,7 +36,9 @@ use crate::{
             },
             r#type::{Tool, ToolType},
             repo_map::generator::RepoMapGeneratorRequest,
-            session::tool_use_agent::{ToolUseAgentInputOnlyTools, ToolUseAgentOutputWithTools},
+            session::tool_use_agent::{
+                ToolParameters, ToolUseAgentInputOnlyTools, ToolUseAgentOutputWithTools,
+            },
             terminal::terminal::TerminalInput,
             test_runner::runner::TestRunnerRequest,
         },
@@ -1197,21 +1199,180 @@ impl Session {
     fn execute_tool_and_generate_observation(
         &self,
         tool_input_partial: ToolInputPartial,
+        exchange_id: &str,
         thinking: String,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<ToolExecutionOutput, SymbolError> {
+        let ui_sender = message_properties.ui_sender();
+        let session_id = message_properties.root_request_id().to_owned();
+        let tool_type = tool_input_partial.to_tool_type();
         let tool_execution_output = match tool_input_partial {
-            ToolInputPartial::AskFollowupQuestions(followup_question) => {}
-            ToolInputPartial::AttemptCompletion(attempt_completion) => {}
-            ToolInputPartial::CodeEditing(code_editing) => {}
-            ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {}
-            ToolInputPartial::LSPDiagnostics(lsp_diagnostics) => {}
-            ToolInputPartial::ListFiles(list_files) => {}
-            ToolInputPartial::OpenFile(open_files) => {}
-            ToolInputPartial::RepoMapGeneration(repo_map_generation) => {}
-            ToolInputPartial::SearchFileContentWithRegex(search_with_regex) => {}
-            ToolInputPartial::TerminalCommand(terminal_command) => {}
+            ToolInputPartial::AskFollowupQuestions(followup_question) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "question".to_owned(),
+                        followup_question.question().to_owned(),
+                        followup_question.question().to_owned(),
+                    ),
+                ));
+            }
+            ToolInputPartial::AttemptCompletion(attempt_completion) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "result".to_owned(),
+                        attempt_completion.result().to_owned(),
+                        attempt_completion.result().to_owned(),
+                    ),
+                ));
+                if let Some(command) = attempt_completion.command() {
+                    let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                        session_id.to_owned(),
+                        exchange_id.to_owned(),
+                        ToolParameters::new(
+                            "command".to_owned(),
+                            command.to_owned(),
+                            command.to_owned(),
+                        ),
+                    ));
+                }
+            }
+            ToolInputPartial::CodeEditing(_code_editing) => {
+                todo!("code_editing is not supported")
+            }
+            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {}
+            ToolInputPartial::LSPDiagnostics(_lsp_diagnostics) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+            }
+            ToolInputPartial::ListFiles(list_files) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let directory_path = list_files.directory_path();
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "directory_path".to_owned(),
+                        directory_path.to_owned(),
+                        directory_path.to_owned(),
+                    ),
+                ));
+                let recrusive = list_files.recursive();
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "recursive".to_owned(),
+                        recrusive.to_string(),
+                        recrusive.to_string(),
+                    ),
+                ));
+            }
+            ToolInputPartial::OpenFile(open_files) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "fs_file_path".to_owned(),
+                        open_files.fs_file_path().to_owned(),
+                        open_files.fs_file_path().to_owned(),
+                    ),
+                ));
+            }
+            ToolInputPartial::RepoMapGeneration(repo_map_generation) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "directory_path".to_owned(),
+                        repo_map_generation.directory_path().to_owned(),
+                        repo_map_generation.directory_path().to_owned(),
+                    ),
+                ));
+            }
+            ToolInputPartial::SearchFileContentWithRegex(search_with_regex) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "directory_path".to_owned(),
+                        search_with_regex.directory_path().to_owned(),
+                        search_with_regex.directory_path().to_owned(),
+                    ),
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "regex_pattern".to_owned(),
+                        search_with_regex.regex_pattern().to_owned(),
+                        search_with_regex.regex_pattern().to_owned(),
+                    ),
+                ));
+                if let Some(file_pattern) = search_with_regex.file_pattern() {
+                    let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                        session_id.to_owned(),
+                        exchange_id.to_owned(),
+                        ToolParameters::new(
+                            "file_pattern".to_owned(),
+                            file_pattern.to_owned(),
+                            file_pattern.to_owned(),
+                        ),
+                    ));
+                }
+            }
+            ToolInputPartial::TerminalCommand(terminal_command) => {
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type,
+                ));
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "command".to_owned(),
+                        terminal_command.command().to_owned(),
+                        terminal_command.command().to_owned(),
+                    ),
+                ));
+            }
             ToolInputPartial::TestRunner(_) => {
                 todo!("test runner command is not supported")
             }

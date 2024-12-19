@@ -1196,9 +1196,11 @@ impl Session {
     }
 
     /// Executes the tool and generates the output over here to use from the tool
-    fn execute_tool_and_generate_observation(
-        &self,
+    async fn execute_tool_and_generate_observation(
+        &mut self,
         tool_input_partial: ToolInputPartial,
+        parent_exchange_id: String,
+        tool_use_id: String,
         exchange_id: &str,
         thinking: String,
         tool_box: Arc<ToolBox>,
@@ -1207,12 +1209,12 @@ impl Session {
         let ui_sender = message_properties.ui_sender();
         let session_id = message_properties.root_request_id().to_owned();
         let tool_type = tool_input_partial.to_tool_type();
-        let tool_execution_output = match tool_input_partial {
+        let tool_execution_output = match tool_input_partial.clone() {
             ToolInputPartial::AskFollowupQuestions(followup_question) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1223,12 +1225,23 @@ impl Session {
                         followup_question.question().to_owned(),
                     ),
                 ));
+
+                // now we want to execute the tool properly over here and store that we are going
+                // to be executing it
+                self.exchanges.push(Exchange::agent_tool_use(
+                    parent_exchange_id,
+                    exchange_id.to_owned(),
+                    tool_input_partial,
+                    tool_type,
+                    thinking,
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::AttemptCompletion(attempt_completion) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1250,6 +1263,16 @@ impl Session {
                         ),
                     ));
                 }
+
+                // now we can store the attempt completion over here as an exchange
+                self.exchanges.push(Exchange::agent_tool_use(
+                    parent_exchange_id,
+                    exchange_id.to_owned(),
+                    tool_input_partial,
+                    tool_type,
+                    thinking,
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::CodeEditing(_code_editing) => {
                 todo!("code_editing is not supported")
@@ -1259,7 +1282,43 @@ impl Session {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
+                    tool_type.clone(),
+                ));
+
+                self.exchanges.push(Exchange::agent_tool_use(
+                    parent_exchange_id,
+                    exchange_id.to_owned(),
+                    tool_input_partial,
+                    tool_type.clone(),
+                    thinking,
+                    tool_use_id.to_owned(),
+                ));
+
+                // Grab the LSP diagnostics over here so we can show that to the LLM
+                let workspace_diagnostics = tool_box
+                    .grab_workspace_diagnostics(message_properties.clone())
+                    .await?;
+
+                let diagnostics_grouped_by_file: DiagnosticMap = workspace_diagnostics
+                    .0
+                    .into_iter()
+                    .fold(HashMap::new(), |mut acc, error| {
+                        acc.entry(error.fs_file_path().to_owned())
+                            .or_insert_with(Vec::new)
+                            .push(error);
+                        acc
+                    });
+
+                let formatted_diagnostics =
+                    PlanService::format_diagnostics(&diagnostics_grouped_by_file);
+
+                // add this again as an exchange as the output for the tool use
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
                     tool_type,
+                    formatted_diagnostics,
+                    UserContext::default(),
+                    tool_use_id,
                 ));
             }
             ToolInputPartial::ListFiles(list_files) => {
@@ -1288,6 +1347,28 @@ impl Session {
                         recrusive.to_string(),
                     ),
                 ));
+
+                // list the files here using the tool-box
+                let input = ToolInput::ListFiles(list_files.clone());
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| SymbolError::ToolError(e))?;
+                let list_files_output = response
+                    .get_list_files_directory()
+                    .ok_or(SymbolError::WrongToolOutput)?;
+                let response = list_files_output
+                    .files()
+                    .into_iter()
+                    .map(|file_path| file_path.to_string_lossy().to_string())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let message = format!(
+                    r#"Content for directory {directory_path}
+{response}"#
+                );
             }
             ToolInputPartial::OpenFile(open_files) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(

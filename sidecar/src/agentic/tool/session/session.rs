@@ -1325,7 +1325,7 @@ impl Session {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let directory_path = list_files.directory_path();
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
@@ -1369,12 +1369,20 @@ impl Session {
                     r#"Content for directory {directory_path}
 {response}"#
                 );
+
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    message,
+                    UserContext::default(),
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::OpenFile(open_files) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1385,12 +1393,39 @@ impl Session {
                         open_files.fs_file_path().to_owned(),
                     ),
                 ));
+                let request = OpenFileRequest::new(
+                    open_files.fs_file_path().to_owned(),
+                    message_properties.editor_url(),
+                );
+                let input = ToolInput::OpenFile(request);
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| SymbolError::ToolError(e))?
+                    .get_file_open_response()
+                    .ok_or(SymbolError::WrongToolOutput)?
+                    .to_string();
+
+                let message = format!(
+                    r#"Here's the full content of the file:
+{}"#,
+                    response.to_string()
+                );
+
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    message,
+                    UserContext::default(),
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::RepoMapGeneration(repo_map_generation) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1401,12 +1436,37 @@ impl Session {
                         repo_map_generation.directory_path().to_owned(),
                     ),
                 ));
+
+                let directory_path = repo_map_generation.directory_path().to_owned();
+                let request = ToolInput::RepoMapGeneration(RepoMapGeneratorRequest::new(
+                    repo_map_generation.directory_path().to_owned(),
+                    3000,
+                ));
+                let tool_output = tool_box
+                    .tools()
+                    .invoke(request)
+                    .await
+                    .map_err(|e| SymbolError::ToolError(e))?
+                    .repo_map_generator_response()
+                    .ok_or(SymbolError::WrongToolOutput)?;
+                let repo_map_str = tool_output.repo_map().to_owned();
+                let message = format!(
+                    r#"Here's the outline of classes and functions present in the directory {directory_path}
+{repo_map_str}"#
+                );
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    message,
+                    UserContext::default(),
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::SearchFileContentWithRegex(search_with_regex) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1437,12 +1497,40 @@ impl Session {
                         ),
                     ));
                 }
+
+                let request = SearchFileContentInput::new(
+                    search_with_regex.directory_path().to_owned(),
+                    search_with_regex.regex_pattern().to_owned(),
+                    search_with_regex.file_pattern().map(|s| s.to_owned()),
+                    message_properties.editor_url(),
+                );
+                let input = ToolInput::SearchFileContentWithRegex(request);
+                let response = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| SymbolError::ToolError(e))?
+                    .get_search_file_content_with_regex()
+                    .ok_or(SymbolError::WrongToolOutput)?;
+                let response = response.response();
+                let message = format!(
+                    r#"Here's the result of running the search query
+{}"#,
+                    response
+                );
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    message,
+                    UserContext::default(),
+                    tool_use_id,
+                ));
             }
             ToolInputPartial::TerminalCommand(terminal_command) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
                     exchange_id.to_owned(),
-                    tool_type,
+                    tool_type.clone(),
                 ));
                 let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
                     session_id.to_owned(),
@@ -1452,6 +1540,33 @@ impl Session {
                         terminal_command.command().to_owned(),
                         terminal_command.command().to_owned(),
                     ),
+                ));
+
+                let command = terminal_command.command().to_owned();
+                let request =
+                    TerminalInput::new(command.to_owned(), message_properties.editor_url());
+                let input = ToolInput::TerminalCommand(request);
+                let tool_output = tool_box
+                    .tools()
+                    .invoke(input)
+                    .await
+                    .map_err(|e| SymbolError::ToolError(e))?
+                    .terminal_command()
+                    .ok_or(SymbolError::WrongToolOutput)?;
+                let output = tool_output.output().to_owned();
+                let message = format!(
+                    r#"Here's the output from running the terminal command
+Command: {}
+Terminal output: {}"#,
+                    command, output
+                );
+
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    message,
+                    UserContext::default(),
+                    tool_use_id,
                 ));
             }
             ToolInputPartial::TestRunner(_) => {

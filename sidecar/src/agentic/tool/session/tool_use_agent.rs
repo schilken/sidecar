@@ -161,7 +161,8 @@ Tool capabilities:
 - When using the search_files tool, craft your regex patterns carefully to balance specificity and flexibility. Based on the developer needs you may use it to find code patterns, function definitions, or any text-based information across the project. The results include context, so analyze the surrounding code to better understand the matches. Leverage the search_files tool in combination with other tools for more comprehensive analysis.
 - Once a file has been created using `create` on `str_replace_editor` tool, you should not keep creating the same file again and again. Focus on editing the file after it has been created.
 - You can run long running terminal commands which can run in the background, we will present you with the updated logs. This can be useful if the user wants you to start a debug server in the terminal and then look at the logs or other long running processes.
-
+- If the `create` command on `str_replace_editor` shows up as success you do not need to view it again.
+- Use the `execute_command` to run terminal command for the user, this can be especially useful for running a debug server, or a test script or a docker container.
 ====
 
 SYSTEM INFORMATION

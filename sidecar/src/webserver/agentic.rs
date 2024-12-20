@@ -1361,6 +1361,12 @@ pub async fn verify_model_config(
 
     match llm_provider {
         Some(llm_provider) => {
+            if llm_provider.provider().is_codestory() {
+                return Ok(Json(AgenticVerifyModelConfigResponse {
+                    valid: true,
+                    error: None,
+                }));
+            }
             // send a dummy request over here to the llm providers checking the validity
             let llm_broker = app.llm_broker.clone();
             let api_key = llm_provider.api_key().clone();

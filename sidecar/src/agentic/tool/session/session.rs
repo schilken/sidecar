@@ -1174,6 +1174,9 @@ impl Session {
                     "{}",
                     format!("inference::engine::retrying_tool_call::erroredbefore")
                 );
+                if matches!(tool_use_output, Err(SymbolError::CancelledResponseStream)) {
+                    return Ok(AgentToolUseOutput::Cancelled);
+                }
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 // just give it a plain retry and call it a day
                 tool_retry_index = tool_retry_index + 1;

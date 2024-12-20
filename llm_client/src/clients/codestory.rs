@@ -276,17 +276,16 @@ impl CodeStoryClient {
         let access_token = self.access_token(api_key)?;
 
         let request = OpenRouterRequest::from_chat_request(request, model.to_owned());
-        let mut response_stream = dbg!(
-            self.client
-                .post(endpoint)
-                .header("X-Accel-Buffering", "no")
-                .header("Authorization", format!("Bearer {}", access_token))
-                .json(&request)
-                .send()
-                .await
-        )?
-        .bytes_stream()
-        .eventsource();
+        let mut response_stream = self
+            .client
+            .post(endpoint)
+            .header("X-Accel-Buffering", "no")
+            .header("Authorization", format!("Bearer {}", access_token))
+            .json(&request)
+            .send()
+            .await?
+            .bytes_stream()
+            .eventsource();
         let mut buffered_stream = "".to_owned();
         // controls which tool we will be using if any
         let mut tool_use_indication: Vec<(String, (String, String))> = vec![];

@@ -1442,7 +1442,7 @@ pub async fn agent_tool_use(
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     // check if model and provider combo supports tool use and midwit agent use
     // let is_midwit_tool_agent = llm_provider.supports_midwit_and_tool_use();
-    let is_midwit_tool_agent = true;
+    let is_midwit_tool_agent = llm_provider.supports_midwit_and_tool_use();
     let message_properties = SymbolEventMessageProperties::new(
         SymbolEventRequestId::new(exchange_id.to_owned(), session_id.to_string()),
         sender.clone(),

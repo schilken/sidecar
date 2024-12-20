@@ -799,7 +799,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
                 thinking.trim().to_owned(),
             )))
         } else {
-            Ok(ToolUseAgentOutputWithTools::Failure(None))
+            Err(SymbolError::CancelledResponseStream)
         }
     }
 

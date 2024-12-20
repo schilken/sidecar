@@ -36,8 +36,11 @@ use crate::{
             },
             r#type::{Tool, ToolType},
             repo_map::generator::RepoMapGeneratorRequest,
-            session::tool_use_agent::{
-                ToolParameters, ToolUseAgentInputOnlyTools, ToolUseAgentOutputWithTools,
+            session::{
+                anthropic_computer_editor::AnthropicCodeEditorUse,
+                tool_use_agent::{
+                    ToolParameters, ToolUseAgentInputOnlyTools, ToolUseAgentOutputWithTools,
+                },
             },
             terminal::terminal::TerminalInput,
             test_runner::runner::TestRunnerRequest,
@@ -1277,7 +1280,64 @@ impl Session {
             ToolInputPartial::CodeEditing(_code_editing) => {
                 todo!("code_editing is not supported")
             }
-            ToolInputPartial::CodeEditorParameters(_code_editor_parameters) => {}
+            ToolInputPartial::CodeEditorParameters(code_editor_parameters) => {
+                let anthropic_computer_use =
+                    AnthropicCodeEditorUse::new(thinking.to_owned(), tool_box.clone());
+
+                let _ = ui_sender.send(UIEventWithID::tool_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    tool_type.clone(),
+                ));
+                // send the command over
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "command".to_owned(),
+                        code_editor_parameters.command.to_string(),
+                        code_editor_parameters.command.to_string(),
+                    ),
+                ));
+                // send the path which we are focussing on over here
+                let _ = ui_sender.send(UIEventWithID::tool_parameter_found(
+                    session_id.to_owned(),
+                    exchange_id.to_owned(),
+                    ToolParameters::new(
+                        "fs_file_path".to_owned(),
+                        code_editor_parameters.path.to_owned(),
+                        code_editor_parameters.path.to_owned(),
+                    ),
+                ));
+
+                self.exchanges.push(Exchange::agent_tool_use(
+                    parent_exchange_id,
+                    exchange_id.to_owned(),
+                    tool_input_partial,
+                    tool_type.clone(),
+                    thinking,
+                    tool_use_id.to_owned(),
+                ));
+
+                let output = anthropic_computer_use
+                    .run_command(code_editor_parameters)
+                    .await;
+                // send the path which we will be using over here as well
+                // we might either get a correct output or a wrong output over here
+                let tool_use_output = match output {
+                    Ok(output) => output,
+                    Err(output) => output,
+                };
+
+                // save this as an exchange and send it over the wire as well
+                self.exchanges.push(Exchange::tool_output(
+                    exchange_id.to_owned(),
+                    tool_type,
+                    tool_use_output,
+                    UserContext::default(),
+                    tool_use_id,
+                ));
+            }
             ToolInputPartial::LSPDiagnostics(_lsp_diagnostics) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),

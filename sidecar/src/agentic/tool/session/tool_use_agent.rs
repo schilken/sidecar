@@ -7,6 +7,7 @@ use llm_client::{
     broker::LLMBroker,
     clients::{
         anthropic::AnthropicClient,
+        codestory::CodeStoryClient,
         open_router::OpenRouterClient,
         types::{LLMClientCompletionRequest, LLMClientMessage},
     },
@@ -147,7 +148,7 @@ You know in detail everything about this repository and all the different code s
 <uploaded_files>
 {working_directory}
 </uploaded_files>
-I've uploaded a python code repository in the directory {working_directory} (not in /tmp/inputs).
+I've uploaded a code repository in the directory {working_directory} (not in /tmp/inputs).
 
 Can you help me implement the necessary changes to the repository so that the requirements specified by the user are met?
 I've also setup the developer environment in {working_directory}.
@@ -173,15 +174,12 @@ Current Working Directory: {working_directory}
 
 FOLLOW these steps to resolve the issue:
 1. As a first step, it might be a good idea to explore the repo to familiarize yourself with its structure.
-2. Open the file called notes.txt where you have previously taken notes about the repository. This will be useful for you to understand what is going on in the repository. You should reuse and make sure the knowledge here is upto date with the repository. Keep making changes to this to keep the notes up to date with your work as well.
-3. Edit the sourcecode of the repo to resolve the issue, your job is to make minimal changes.
+2. Once you have understood the repository structure being by making minimal edits to make sure that the user request is answered. The user request could also be about understanding the codebase in which case you don't need to make any edits.
+3. Once you have made the edits it is important that you look at the diagnostic messages which might be present so you can fix any errors or bugs which you have introduced.
+4. You also have access to the terminal, you should ALWAYS run commands from the {working_directory} (any command run outside this directory will lead to errors)
+5. Once you have done everything to help the user out, use attempt_completion to summarise what you have done and end the task assigned to you by the user.
 
-Your thinking should be thorough and so it's fine if it's very long.
-This is super important and before using any tool you have to output your thinking in <thinking> section like this:'
-<thinking>
-{{your thoughts about using the tool}}
-</thinking>
-NEVER forget to include the <thinking></thinking> section before using a tool. We will not be able to invoke the tool properly if you forget it"#
+Your thinking should be thorough and so it's fine if it's very long."#
         )
     }
 
@@ -575,6 +573,7 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
         &self,
         input: ToolUseAgentInputOnlyTools,
     ) -> Result<ToolUseAgentOutputWithTools, SymbolError> {
+        println!("tool_use_agent::invoke_json_tool_use_prompt");
         let system_message = LLMClientMessage::system(self.system_message_midwit_json_with_notes())
             .insert_tools(input.tools);
 
@@ -670,6 +669,26 @@ You accomplish a given task iteratively, breaking it down into clear steps and w
             tokio::spawn(async move {
                 if llm_properties.provider().is_anthropic_api_key() {
                     AnthropicClient::new()
+                        .stream_completion_with_tool(
+                            llm_properties.api_key().clone(),
+                            LLMClientCompletionRequest::new(
+                                llm_properties.llm().clone(),
+                                final_messages,
+                                0.2,
+                                None,
+                            ),
+                            // llm_properties.provider().clone(),
+                            vec![
+                                ("event_type".to_owned(), "tool_use".to_owned()),
+                                ("root_id".to_owned(), cloned_root_request_id),
+                            ]
+                            .into_iter()
+                            .collect(),
+                            sender,
+                        )
+                        .await
+                } else if llm_properties.provider().is_codestory() {
+                    CodeStoryClient::new("http://localhost:8080")
                         .stream_completion_with_tool(
                             llm_properties.api_key().clone(),
                             LLMClientCompletionRequest::new(

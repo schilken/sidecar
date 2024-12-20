@@ -1106,11 +1106,12 @@ impl Session {
     pub async fn get_tool_to_use_json(
         mut self,
         tool_box: Arc<ToolBox>,
-        excahnge_id: String,
+        exchange_id: String,
         parent_exchange_id: String,
         tool_use_agent: ToolUseAgent,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<AgentToolUseOutput, SymbolError> {
+        println!("session::get_tool_use_json");
         let mut convereted_messages = vec![];
         for previous_message in self.exchanges.iter() {
             convereted_messages.push(previous_message.to_conversation_message(true).await);
@@ -1125,6 +1126,7 @@ impl Session {
         let tool_agent_input = ToolUseAgentInputOnlyTools::new(
             convereted_messages,
             self.tools
+                .to_vec()
                 .into_iter()
                 .filter_map(|tool_type| tool_box.tools().get_tool_json(&tool_type))
                 .collect(),
@@ -1187,18 +1189,47 @@ impl Session {
         // TODO(skcd): Figure out how the data passing here will work
         match tool_use_output {
             Ok(tool_use_parameters) => match tool_use_parameters {
-                ToolUseAgentOutputWithTools::Success((tool_input_partial, _thinking)) => {
-                    if tool_input_partial.is_empty() {}
+                ToolUseAgentOutputWithTools::Success((tool_input_partial, thinking)) => {
+                    if tool_input_partial.is_empty() {
+                        Ok(AgentToolUseOutput::Failed(
+                            "failed to use any tool, I am going to retry".to_owned(),
+                        ))
+                    } else {
+                        let (tool_use_id, tool_input_partial) = tool_input_partial[0].clone();
+                        let _ = self
+                            .execute_tool_and_generate_observation(
+                                tool_input_partial.clone(),
+                                parent_exchange_id,
+                                tool_use_id,
+                                &exchange_id,
+                                thinking,
+                                tool_box,
+                                message_properties,
+                            )
+                            .await;
+                        Ok(AgentToolUseOutput::Success((tool_input_partial, self)))
+                    }
                 }
-                ToolUseAgentOutputWithTools::Failure(_thinking) => {}
+                ToolUseAgentOutputWithTools::Failure(thinking) => {
+                    // if we failed to get a tool show this as an exchange to the user
+                    match thinking {
+                        Some(thinking) => Ok(AgentToolUseOutput::Failed(thinking)),
+                        None => Ok(AgentToolUseOutput::Failed(
+                            "failed to generate a tool to use".to_owned(),
+                        )),
+                    }
+                }
             },
-            Err(e) => {}
+            Err(e) => {
+                // add an exchange here telling that we failed to generate the tool
+                // and show the thinking over here
+                Ok(AgentToolUseOutput::Failed(e.to_string()))
+            }
         }
-
-        todo!()
     }
 
     /// Executes the tool and generates the output over here to use from the tool
+    /// we also add the observation to the exchanges so its taken care of
     async fn execute_tool_and_generate_observation(
         &mut self,
         tool_input_partial: ToolInputPartial,
@@ -1208,11 +1239,17 @@ impl Session {
         thinking: String,
         tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
-    ) -> Result<ToolExecutionOutput, SymbolError> {
+    ) -> Result<(), SymbolError> {
         let ui_sender = message_properties.ui_sender();
         let session_id = message_properties.root_request_id().to_owned();
         let tool_type = tool_input_partial.to_tool_type();
-        let tool_execution_output = match tool_input_partial.clone() {
+        // send thinking over
+        let _ = ui_sender.clone().send(UIEventWithID::tool_thinking(
+            session_id.to_owned(),
+            exchange_id.to_owned(),
+            thinking.to_owned(),
+        ));
+        match tool_input_partial.clone() {
             ToolInputPartial::AskFollowupQuestions(followup_question) => {
                 let _ = ui_sender.send(UIEventWithID::tool_found(
                     session_id.to_owned(),
@@ -1406,6 +1443,14 @@ impl Session {
                         recrusive.to_string(),
                         recrusive.to_string(),
                     ),
+                ));
+                self.exchanges.push(Exchange::agent_tool_use(
+                    parent_exchange_id,
+                    exchange_id.to_owned(),
+                    tool_input_partial,
+                    tool_type.clone(),
+                    thinking,
+                    tool_use_id.to_owned(),
                 ));
 
                 // list the files here using the tool-box
@@ -1633,7 +1678,7 @@ Terminal output: {}"#,
                 todo!("test runner command is not supported")
             }
         };
-        todo!("figure out how to implement each of these")
+        Ok(())
     }
 
     pub async fn get_tool_to_use(

@@ -544,7 +544,11 @@ impl SessionService {
                     ToolType::ListFiles,
                     ToolType::SearchFileContentWithRegex,
                     ToolType::OpenFile,
-                    ToolType::CodeEditing,
+                    if is_midwit_tool_agent {
+                        ToolType::CodeEditorTool
+                    } else {
+                        ToolType::CodeEditing
+                    },
                     ToolType::LSPDiagnostics,
                     // disable for testing
                     ToolType::AskFollowupQuestions,
@@ -600,18 +604,31 @@ impl SessionService {
             self.track_exchange(&session_id, &tool_exchange_id, cancellation_token.clone())
                 .await;
 
-            let tool_use_output = session
-                // the clone here is pretty bad but its the easiest and the sanest
-                // way to keep things on the happy path
-                .clone()
-                .get_tool_to_use(
-                    tool_box.clone(),
-                    tool_exchange_id.to_owned(),
-                    exchange_id.to_owned(),
-                    tool_agent.clone(),
-                    message_properties.clone(),
-                )
-                .await;
+            let tool_use_output = if is_midwit_tool_agent {
+                session
+                    .clone()
+                    .get_tool_to_use_json(
+                        tool_box.clone(),
+                        tool_exchange_id.to_owned(),
+                        exchange_id.to_owned(),
+                        tool_agent.clone(),
+                        message_properties.clone(),
+                    )
+                    .await
+            } else {
+                session
+                    // the clone here is pretty bad but its the easiest and the sanest
+                    // way to keep things on the happy path
+                    .clone()
+                    .get_tool_to_use(
+                        tool_box.clone(),
+                        tool_exchange_id.to_owned(),
+                        exchange_id.to_owned(),
+                        tool_agent.clone(),
+                        message_properties.clone(),
+                    )
+                    .await
+            };
 
             println!("tool_use_output::{:?}", tool_use_output);
 
@@ -622,15 +639,17 @@ impl SessionService {
                     // store to disk
                     let _ = self.save_to_storage(&session).await;
                     let tool_type = tool_input_partial.to_tool_type();
-                    session = session
-                        .invoke_tool(
-                            tool_type.clone(),
-                            tool_input_partial,
-                            tool_box.clone(),
-                            root_directory.to_owned(),
-                            message_properties.clone(),
-                        )
-                        .await?;
+                    if !is_midwit_tool_agent {
+                        session = session
+                            .invoke_tool(
+                                tool_type.clone(),
+                                tool_input_partial,
+                                tool_box.clone(),
+                                root_directory.to_owned(),
+                                message_properties.clone(),
+                            )
+                            .await?;
+                    }
 
                     let _ = self.save_to_storage(&session).await;
                     if matches!(tool_type, ToolType::AskFollowupQuestions)

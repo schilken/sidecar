@@ -1441,7 +1441,8 @@ pub async fn agent_tool_use(
     let cancellation_token = tokio_util::sync::CancellationToken::new();
     let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
     // check if model and provider combo supports tool use and midwit agent use
-    let is_midwit_tool_agent = llm_provider.supports_midwit_and_tool_use();
+    // let is_midwit_tool_agent = llm_provider.supports_midwit_and_tool_use();
+    let is_midwit_tool_agent = true;
     let message_properties = SymbolEventMessageProperties::new(
         SymbolEventRequestId::new(exchange_id.to_owned(), session_id.to_string()),
         sender.clone(),

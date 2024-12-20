@@ -78,6 +78,22 @@ pub async fn run(application: Application) -> Result<()> {
     Ok(())
 }
 
+async fn logging_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
+    let start = std::time::Instant::now();
+    let method = request.method().clone();
+    let uri = request.uri().clone();
+
+    let response = next.run(request).await;
+    
+    let duration = start.elapsed();
+    let status = response.status();
+    
+    info!("Request {} {} - Status: {} - Duration: {:?}", method, uri, status, duration);
+    
+    response
+}
+
+
 // reintroduce when necessary
 async fn _auth_middleware<B>(request: Request<B>, next: Next<B>) -> Result<Response, StatusCode> {
     // Get token from Authorization header
@@ -136,6 +152,8 @@ async fn _validate_workos_token(token: &str) -> Result<bool> {
 // - when a file changes, it should still be logged and tracked
 // - when a file is opened, it should be tracked over here too
 pub async fn start(app: Application) -> anyhow::Result<()> {
+    use axum::middleware::from_fn;
+
     println!("Port: {}", app.config.port);
     let bind = SocketAddr::new(app.config.host.parse()?, app.config.port);
 
@@ -168,6 +186,7 @@ pub async fn start(app: Application) -> anyhow::Result<()> {
         .layer(Extension(app.clone()))
         .with_state(app.clone())
         .with_state(app.clone())
+        .layer(from_fn(logging_middleware))
         .layer(CorsLayer::permissive())
         .layer(CatchPanicLayer::new())
         // I want to set the bytes limit here to 20 MB
@@ -181,7 +200,6 @@ pub async fn start(app: Application) -> anyhow::Result<()> {
 
     Ok(())
 }
-
 fn plan_router() -> Router {
     use axum::routing::*;
     Router::new()

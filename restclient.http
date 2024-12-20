@@ -1,0 +1,16 @@
+### Health Check
+GET http://localhost:42424/api/health
+
+### Get Config
+GET http://localhost:42424/api/config
+
+### Get Version
+GET http://localhost:42424/api/version
+
+### Inline Completion
+POST http://localhost:42424/api/inline_completion
+Content-Type: application/json
+
+{
+  "prompt": "test prompt"
+}

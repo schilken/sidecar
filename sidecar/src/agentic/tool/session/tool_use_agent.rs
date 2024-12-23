@@ -1430,7 +1430,161 @@ impl ToolUseGenerator {
                     }
                 }
                 ToolBlockStatus::ToolFound => {
-                    if answer_line_at_index == "<fs_file_path>" {
+                    // there are cases where the llm does not put the \n properly
+                    // we still want to parse it out properly
+                    if answer_line_at_index.starts_with("<fs_file_path>")
+                        && answer_line_at_index.ends_with("</fs_file_path>")
+                    {
+                        // record that we found a file path over here
+                        if let Some(prefix_removed) =
+                            answer_line_at_index.strip_prefix("<fs_file_path>")
+                        {
+                            if let Some(suffix_removed) =
+                                prefix_removed.strip_suffix("</fs_file_path>")
+                            {
+                                self.fs_file_path = Some(suffix_removed.to_owned());
+                                let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                    ToolParameters {
+                                        field_name: "fs_file_path".to_owned(),
+                                        field_content_up_until_now: suffix_removed.to_owned(),
+                                        field_content_delta: suffix_removed.to_owned(),
+                                    },
+                                ));
+                            }
+                        }
+                    } else if answer_line_at_index.starts_with("<directory_path>")
+                        && answer_line_at_index.ends_with("</directory_path>")
+                    {
+                        // record that we found a directory_path over here
+                        if let Some(prefix_removed) =
+                            answer_line_at_index.strip_prefix("<directory_path>")
+                        {
+                            if let Some(suffix_removed) =
+                                prefix_removed.strip_suffix("</directory_path>")
+                            {
+                                self.directory_path = Some(suffix_removed.to_owned());
+                                let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                    ToolParameters {
+                                        field_name: "directory_path".to_owned(),
+                                        field_content_up_until_now: suffix_removed.to_owned(),
+                                        field_content_delta: suffix_removed.to_owned(),
+                                    },
+                                ));
+                            }
+                        }
+                    } else if answer_line_at_index.starts_with("<recursive>")
+                        && answer_line_at_index.ends_with("</recursive>")
+                    {
+                        // record that we found a recursive path over here
+                        if let Some(prefix_removed) =
+                            answer_line_at_index.strip_prefix("<recursive>")
+                        {
+                            if let Some(suffix_removed) =
+                                prefix_removed.strip_suffix("</recursive>")
+                            {
+                                self.recursive =
+                                    Some(suffix_removed.parse::<bool>().unwrap_or(false));
+                                let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                    ToolParameters {
+                                        field_name: "recursive".to_owned(),
+                                        field_content_up_until_now: suffix_removed.to_owned(),
+                                        field_content_delta: suffix_removed.to_owned(),
+                                    },
+                                ));
+                            }
+                        }
+                    } else if answer_line_at_index.starts_with("<regex_pattern>")
+                        && answer_line_at_index.ends_with("</regex_pattern>")
+                    {
+                        // record that we found a regex pattern over here
+                        if let Some(prefix_removed) =
+                            answer_line_at_index.strip_prefix("<regex_pattern>")
+                        {
+                            if let Some(suffix_removed) =
+                                prefix_removed.strip_suffix("</regex_pattern>")
+                            {
+                                match self.regex_pattern_found.clone() {
+                                    Some(existing_pattern) => {
+                                        let new_pattern =
+                                            existing_pattern.clone() + "\n" + suffix_removed;
+                                        let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                            ToolParameters {
+                                                field_name: "regex_pattern".to_owned(),
+                                                field_content_up_until_now: new_pattern.clone(),
+                                                field_content_delta: suffix_removed.to_owned(),
+                                            },
+                                        ));
+                                        self.regex_pattern_found = Some(new_pattern);
+                                    }
+                                    None => {
+                                        self.regex_pattern_found = Some(suffix_removed.to_owned());
+                                        let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                            ToolParameters {
+                                                field_name: "regex_pattern".to_owned(),
+                                                field_content_up_until_now: suffix_removed
+                                                    .to_owned(),
+                                                field_content_delta: suffix_removed.to_owned(),
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    } else if answer_line_at_index.starts_with("<command>")
+                        && answer_line_at_index.ends_with("</command>")
+                    {
+                        // parse out the command properly
+                        if let Some(prefix_removed) = answer_line_at_index.strip_prefix("<command>")
+                        {
+                            if let Some(suffix_removed) = prefix_removed.strip_suffix("</command>")
+                            {
+                                match self.command.clone() {
+                                    Some(command) => {
+                                        let new_command = command.clone() + "\n" + suffix_removed;
+                                        let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                            ToolParameters {
+                                                field_name: "command".to_owned(),
+                                                field_content_up_until_now: new_command.clone(),
+                                                field_content_delta: suffix_removed.to_owned(),
+                                            },
+                                        ));
+                                        self.command = Some(new_command);
+                                    }
+                                    None => {
+                                        self.command = Some(suffix_removed.to_owned());
+                                        let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                            ToolParameters {
+                                                field_name: "command".to_owned(),
+                                                field_content_up_until_now: suffix_removed
+                                                    .to_owned(),
+                                                field_content_delta: suffix_removed.to_owned(),
+                                            },
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    } else if answer_line_at_index.starts_with("<file_pattern>")
+                        && answer_line_at_index.ends_with("</file_pattern>")
+                    {
+                        // record that we found a recursive path over here
+                        if let Some(prefix_removed) =
+                            answer_line_at_index.strip_prefix("<file_pattern>")
+                        {
+                            if let Some(suffix_removed) =
+                                prefix_removed.strip_suffix("</file_pattern>")
+                            {
+                                self.file_pattern = Some(suffix_removed.to_owned());
+                                let _ = self.sender.send(ToolBlockEvent::ToolParameters(
+                                    ToolParameters {
+                                        field_name: "file_pattern".to_owned(),
+                                        field_content_up_until_now: suffix_removed.to_owned(),
+                                        field_content_delta: suffix_removed.to_owned(),
+                                    },
+                                ));
+                            }
+                        }
+                    } else if answer_line_at_index == "<fs_file_path>" {
                         self.tool_block_status = ToolBlockStatus::FilePathFound;
                     } else if answer_line_at_index == "<instruction>" {
                         self.tool_block_status = ToolBlockStatus::InstructionFound;
@@ -1822,6 +1976,26 @@ trait\s+Tool\s*\{
 <file_pattern>
 *.rs
 </file_pattern>
+</search_files>"#;
+        let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
+        let mut tool_use_generator = ToolUseGenerator::new(sender);
+        tool_use_generator.add_delta(&input);
+        tool_use_generator.flush_answer();
+
+        let tool_use_possible = tool_use_generator.tool_input_partial;
+        assert!(tool_use_possible.is_some());
+    }
+
+    #[test]
+    fn test_parsing_same_line_input_works() {
+        let input = r#"<thinking>
+I need to first locate and read the Tool trait definition. Based on the context, it's likely in one of the Rust source files. Let me search for it.
+</thinking>
+
+<search_files>
+<directory_path>/Users/skcd/test_repo/sidecar</directory_path>
+<regex_pattern>trait\s+Tool\s*\{</regex_pattern>
+<file_pattern>*.rs</file_pattern>
 </search_files>"#;
         let (sender, _receiver) = tokio::sync::mpsc::unbounded_channel();
         let mut tool_use_generator = ToolUseGenerator::new(sender);

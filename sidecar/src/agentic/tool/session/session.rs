@@ -61,14 +61,6 @@ use super::{
 };
 
 #[derive(Debug)]
-struct ToolExecutionOutput {
-    message: String,
-    thinking: Option<String>,
-    expect_correction: bool,
-    summary: Option<String>,
-}
-
-#[derive(Debug)]
 pub enum AgentToolUseOutput {
     Success((ToolInputPartial, Session)),
     Failed(String),
@@ -2359,7 +2351,7 @@ Terminal output: {}"#,
         mut self,
         parent_exchange_id: String,
         scratch_pad_agent: ScratchPadAgent,
-        tool_box: Arc<ToolBox>,
+        _tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
         let last_exchange = self.last_exchange().cloned();

@@ -6,7 +6,7 @@ use super::types::json as json_result;
 use axum::response::{sse, IntoResponse, Sse};
 use axum::{extract::Query as axumQuery, Extension, Json};
 use futures::{stream, StreamExt};
-use llm_client::clients::types::{LLMClientCompletionRequest, LLMClientMessage, LLMType};
+use llm_client::clients::types::LLMType;
 use llm_client::provider::{
     CodeStoryLLMTypes, CodestoryAccessToken, LLMProvider, LLMProviderAPIKeys,
 };
@@ -1352,7 +1352,7 @@ pub struct AgenticVerifyModelConfigResponse {
 impl ApiResponse for AgenticVerifyModelConfigResponse {}
 
 pub async fn verify_model_config(
-    Extension(app): Extension<Application>,
+    Extension(_app): Extension<Application>,
     Json(AgenticVerifyModelConfig {
         model_configuration: _,
     }): Json<AgenticVerifyModelConfig>,

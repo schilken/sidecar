@@ -130,6 +130,7 @@ impl<'de> Deserialize<'de> for LLMType {
                     "DeepSeekCoderV2" => Ok(LLMType::DeepSeekCoderV2),
                     "o1-preview" => Ok(LLMType::O1Preview),
                     "o1-mini" => Ok(LLMType::O1Mini),
+                    "o1" => Ok(LLMType::O1),
                     _ => Ok(LLMType::Custom(value.to_string())),
                 }
             }

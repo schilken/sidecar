@@ -2634,10 +2634,6 @@ Terminal output: {}"#,
 
     pub fn has_running_code_edits(&self, exchange_id: &str) -> bool {
         let found_exchange = self.find_exchange_by_id(exchange_id);
-        println!(
-            "session::has_running_code_edits::exchange_id({})::found_exchange::({:?})",
-            exchange_id, found_exchange
-        );
         match found_exchange {
             Some(exchange) => {
                 exchange.is_agent_work() && exchange.is_still_running() && exchange.has_code_edits()

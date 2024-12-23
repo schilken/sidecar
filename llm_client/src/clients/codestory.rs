@@ -213,7 +213,9 @@ impl CodeStoryClient {
             LLMType::ClaudeHaiku => Ok("claude-3-5-haiku-20241022".to_owned()), // updated to latest haiku
             LLMType::GeminiPro => Ok("gemini-1.5-pro".to_owned()),
             LLMType::GeminiProFlash => Ok("gemini-1.5-flash".to_owned()),
-            LLMType::O1Preview => Ok("o1-preview".to_owned()), // o1 baby
+            LLMType::O1Preview => Ok("o1-preview".to_owned()),
+            LLMType::O1 => Ok("o1".to_owned()),          // o1
+            LLMType::O1Mini => Ok("o1-mini".to_owned()), // o1 mini
             _ => Err(LLMClientError::UnSupportedModel),
         }
     }
@@ -229,6 +231,8 @@ impl CodeStoryClient {
             LLMType::Gpt4Turbo => Ok(self.gpt4_preview_endpoint(&self.api_base)),
             LLMType::Gpt4OMini => Ok(self.gpt4_preview_endpoint(&self.api_base)),
             LLMType::O1Preview => Ok(self.o1_preview_endpoint(&self.api_base)),
+            LLMType::O1 => Ok(self.o1_preview_endpoint(&self.api_base)),
+            LLMType::O1Mini => Ok(self.o1_preview_endpoint(&self.api_base)),
             LLMType::CodeLlama13BInstruct
             | LLMType::CodeLlama7BInstruct
             | LLMType::DeepSeekCoder33BInstruct => Ok(self.together_api_endpoint(&self.api_base)),
@@ -380,7 +384,7 @@ impl LLMClient for CodeStoryClient {
         self.stream_completion(api_key, request, sender).await
     }
 
-    // codestory stream woooo
+    // here...
     async fn stream_completion(
         &self,
         api_key: LLMProviderAPIKeys,
@@ -388,11 +392,12 @@ impl LLMClient for CodeStoryClient {
         sender: UnboundedSender<LLMClientCompletionResponse>,
     ) -> Result<String, LLMClientError> {
         let model = self.model_name(request.model())?;
+        println!("model::({:?})", &model);
         let endpoint = self.model_endpoint(request.model())?;
-
+        println!("endpoint::({:?})", &endpoint);
         // get access token from api_key
         let access_token = self.access_token(api_key)?;
-
+        println!("access_token::({:?})", &access_token);
         let request = CodeStoryRequest::from_chat_request(request, model.to_owned());
         let mut response_stream = self
             .client

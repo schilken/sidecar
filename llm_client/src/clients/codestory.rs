@@ -397,7 +397,6 @@ impl LLMClient for CodeStoryClient {
         println!("endpoint::({:?})", &endpoint);
         // get access token from api_key
         let access_token = self.access_token(api_key)?;
-        println!("access_token::({:?})", &access_token);
         let request = CodeStoryRequest::from_chat_request(request, model.to_owned());
         let mut response_stream = self
             .client

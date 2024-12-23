@@ -400,9 +400,7 @@ impl LLMClient for CodeStoryClient {
         sender: UnboundedSender<LLMClientCompletionResponse>,
     ) -> Result<String, LLMClientError> {
         let model = self.model_name(request.model())?;
-        println!("model::({:?})", &model);
         let endpoint = self.model_endpoint(request.model())?;
-        println!("endpoint::({:?})", &endpoint);
         // get access token from api_key
         let access_token = self.access_token(api_key)?;
         let request = CodeStoryRequest::from_chat_request(request, model.to_owned());
@@ -452,11 +450,6 @@ impl LLMClient for CodeStoryClient {
                 }
             }
         }
-
-        println!(
-            "stream_completion::buffered_stream::({:?})",
-            &buffered_stream
-        );
 
         Ok(buffered_stream)
     }

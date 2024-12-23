@@ -32,6 +32,8 @@ pub enum LLMType {
     O1Preview,
     /// o1 mini model
     O1Mini,
+    /// o1 model
+    O1,
     /// DeepSeek Coder 1.3B Instruct model
     DeepSeekCoder1_3BInstruct,
     /// DeepSeek Coder 33B Instruct model
@@ -217,6 +219,7 @@ impl fmt::Display for LLMType {
             LLMType::Gpt4OMini => write!(f, "Gpt4OMini"),
             LLMType::O1Preview => write!(f, "o1-preview"),
             LLMType::O1Mini => write!(f, "o1-mini"),
+            LLMType::O1 => write!(f, "o1"),
             LLMType::Custom(s) => write!(f, "Custom({})", s),
         }
     }

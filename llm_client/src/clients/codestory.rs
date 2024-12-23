@@ -178,7 +178,15 @@ impl CodeStoryClient {
     }
 
     pub fn o1_preview_endpoint(&self, api_base: &str) -> String {
+        format!("{api_base}/chat-o1-preview") // this is legacy endpoint
+    }
+
+    pub fn o1_endpoint(&self, api_base: &str) -> String {
         format!("{api_base}/chat-o1") // new endpoint on anton
+    }
+
+    pub fn o1_mini_endpoint(&self, api_base: &str) -> String {
+        format!("{api_base}/chat-o1-mini") // new endpoint on anton
     }
 
     pub fn together_api_endpoint(&self, api_base: &str) -> String {
@@ -230,9 +238,9 @@ impl CodeStoryClient {
             LLMType::Gpt4 => Ok(self.gpt4_endpoint(&self.api_base)),
             LLMType::Gpt4Turbo => Ok(self.gpt4_preview_endpoint(&self.api_base)),
             LLMType::Gpt4OMini => Ok(self.gpt4_preview_endpoint(&self.api_base)),
-            LLMType::O1Preview => Ok(self.o1_preview_endpoint(&self.api_base)),
-            LLMType::O1 => Ok(self.o1_preview_endpoint(&self.api_base)),
-            LLMType::O1Mini => Ok(self.o1_preview_endpoint(&self.api_base)),
+            LLMType::O1Preview => Ok(self.o1_preview_endpoint(&self.api_base)), // this is legacy endpoint
+            LLMType::O1 => Ok(self.o1_endpoint(&self.api_base)), // o1 has its own endpoint, streaming not supported
+            LLMType::O1Mini => Ok(self.o1_mini_endpoint(&self.api_base)), // o1 mini has its own endpoint, streaming supported
             LLMType::CodeLlama13BInstruct
             | LLMType::CodeLlama7BInstruct
             | LLMType::DeepSeekCoder33BInstruct => Ok(self.together_api_endpoint(&self.api_base)),
@@ -444,6 +452,11 @@ impl LLMClient for CodeStoryClient {
                 }
             }
         }
+
+        println!(
+            "stream_completion::buffered_stream::({:?})",
+            &buffered_stream
+        );
 
         Ok(buffered_stream)
     }

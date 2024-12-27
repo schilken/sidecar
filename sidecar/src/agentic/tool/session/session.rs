@@ -61,14 +61,6 @@ use super::{
 };
 
 #[derive(Debug)]
-struct ToolExecutionOutput {
-    message: String,
-    thinking: Option<String>,
-    expect_correction: bool,
-    summary: Option<String>,
-}
-
-#[derive(Debug)]
 pub enum AgentToolUseOutput {
     Success((ToolInputPartial, Session)),
     Failed(String),
@@ -2359,7 +2351,7 @@ Terminal output: {}"#,
         mut self,
         parent_exchange_id: String,
         scratch_pad_agent: ScratchPadAgent,
-        tool_box: Arc<ToolBox>,
+        _tool_box: Arc<ToolBox>,
         message_properties: SymbolEventMessageProperties,
     ) -> Result<Self, SymbolError> {
         let last_exchange = self.last_exchange().cloned();
@@ -2642,10 +2634,6 @@ Terminal output: {}"#,
 
     pub fn has_running_code_edits(&self, exchange_id: &str) -> bool {
         let found_exchange = self.find_exchange_by_id(exchange_id);
-        println!(
-            "session::has_running_code_edits::exchange_id({})::found_exchange::({:?})",
-            exchange_id, found_exchange
-        );
         match found_exchange {
             Some(exchange) => {
                 exchange.is_agent_work() && exchange.is_still_running() && exchange.has_code_edits()
